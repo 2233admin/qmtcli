@@ -22,7 +22,7 @@ Repository = "https://github.com/2233admin/qmtcli"
 Issues = "https://github.com/2233admin/qmtcli/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "ruff>=0.4", "numpy>=2.4.6", "pandas>=3.0.3"]
 
 [project.scripts]
 qmtcli = "qmtcli.cli:main"
@@ -41,3 +41,11 @@ target-version = "py311"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "numpy>=2.4.6",
+    "pandas>=3.0.3",
+]

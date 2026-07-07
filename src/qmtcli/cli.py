@@ -5,18 +5,70 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from qmtcli.gateway import QMTConnection, QMTGateway
 
+try:
+    import numpy as _np
+except ImportError:  # pragma: no cover - exercised only when numpy is absent
+    _np = None
+try:
+    import pandas as _pd
+except ImportError:  # pragma: no cover - exercised only when pandas is absent
+    _pd = None
+
+
+def _scrub(obj: Any) -> Any:
+    """Recursively replace NaN/NaT/NA leaves with None so json.dumps emits valid JSON null.
+
+    json's own encoder happily emits the non-standard ``NaN`` token for float('nan') and never
+    calls ``default`` for it, so this has to run before the value reaches json.dumps.
+    """
+    if isinstance(obj, dict):
+        return {key: _scrub(item) for key, item in obj.items()}
+    if isinstance(obj, list):
+        return [_scrub(item) for item in obj]
+    if _pd is not None and (obj is _pd.NaT or obj is _pd.NA):
+        return None
+    if isinstance(obj, float) and obj != obj:  # NaN is the only float unequal to itself
+        return None
+    return obj
+
 
 def _json_default(value: Any) -> Any:
+    if _pd is not None and isinstance(value, _pd.DataFrame):
+        if isinstance(value.index, _pd.RangeIndex):
+            records = value.to_dict(orient="records")
+        else:
+            # Keep a non-trivial index (commonly a time index) as a plain column instead of
+            # dropping it.
+            records = value.reset_index().to_dict(orient="records")
+        return _scrub(records)
+    if _pd is not None and isinstance(value, _pd.Series):
+        return _scrub(value.to_dict())
+    if _pd is not None and isinstance(value, _pd.Timestamp):
+        return value.isoformat()
+    if _np is not None and isinstance(value, _np.ndarray):
+        return value.tolist()
+    if _np is not None and isinstance(value, _np.generic):
+        return value.item()
     if is_dataclass(value):
         return asdict(value)
     if hasattr(value, "__dict__"):
         return value.__dict__
     return str(value)
+
+
+_print_lock = threading.Lock()
+
+
+def _emit(obj: Any) -> None:
+    """Thread-safe single-line JSON print used by the server loop and subscription callbacks."""
+    with _print_lock:
+        print(json.dumps(obj, ensure_ascii=False, default=_json_default), flush=True)
 
 
 def _print_json(value: Any) -> None:
@@ -53,6 +105,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "download",
+            "rpc_command": "download",
             "description": "Call an xtdata download_* function to populate the local QMT cache.",
             "requires_account": False,
             "danger": "downloads_data",
@@ -66,6 +119,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "calendar",
+            "rpc_command": "calendar",
             "description": "Call xtdata.get_trading_calendar.",
             "requires_account": False,
             "danger": "safe",
@@ -77,12 +131,14 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "sector-list",
+            "rpc_command": "sector_list",
             "description": "Call xtdata.get_sector_list.",
             "requires_account": False,
             "danger": "safe",
         },
         {
             "name": "sector-stocks",
+            "rpc_command": "sector_stocks",
             "description": "Call xtdata.get_stock_list_in_sector.",
             "requires_account": False,
             "danger": "safe",
@@ -90,6 +146,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "full-tick",
+            "rpc_command": "full_tick",
             "description": "Call xtdata.get_full_tick.",
             "requires_account": False,
             "danger": "safe",
@@ -97,6 +154,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "bars",
+            "rpc_command": "bars",
             "description": "Call xtdata.get_market_data_ex.",
             "requires_account": False,
             "danger": "safe",
@@ -113,6 +171,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "l2-quote",
+            "rpc_command": "l2_quote",
             "description": "Call xtdata.get_l2_quote.",
             "requires_account": False,
             "danger": "safe",
@@ -127,6 +186,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "l2-order",
+            "rpc_command": "l2_order",
             "description": "Call xtdata.get_l2_order.",
             "requires_account": False,
             "danger": "safe",
@@ -141,6 +201,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "l2-transaction",
+            "rpc_command": "l2_transaction",
             "description": "Call xtdata.get_l2_transaction.",
             "requires_account": False,
             "danger": "safe",
@@ -155,6 +216,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "instrument-detail",
+            "rpc_command": "instrument_detail",
             "description": "Call xtdata.get_instrument_detail.",
             "requires_account": False,
             "danger": "safe",
@@ -162,6 +224,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "instrument-type",
+            "rpc_command": "instrument_type",
             "description": "Call xtdata.get_instrument_type.",
             "requires_account": False,
             "danger": "safe",
@@ -169,6 +232,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "trading-dates",
+            "rpc_command": "trading_dates",
             "description": "Call xtdata.get_trading_dates.",
             "requires_account": False,
             "danger": "safe",
@@ -181,6 +245,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "divid-factors",
+            "rpc_command": "divid_factors",
             "description": "Call xtdata.get_divid_factors.",
             "requires_account": False,
             "danger": "safe",
@@ -188,18 +253,21 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "holidays",
+            "rpc_command": "holidays",
             "description": "Call xtdata.get_holidays.",
             "requires_account": False,
             "danger": "safe",
         },
         {
             "name": "period-list",
+            "rpc_command": "period_list",
             "description": "Call xtdata.get_period_list.",
             "requires_account": False,
             "danger": "safe",
         },
         {
             "name": "ipo-info",
+            "rpc_command": "ipo_info",
             "description": "Call xtdata.get_ipo_info.",
             "requires_account": False,
             "danger": "safe",
@@ -207,6 +275,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "cb-info",
+            "rpc_command": "cb_info",
             "description": "Call xtdata.get_cb_info.",
             "requires_account": False,
             "danger": "safe",
@@ -214,12 +283,14 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "etf-info",
+            "rpc_command": "etf_info",
             "description": "Call xtdata.get_etf_info.",
             "requires_account": False,
             "danger": "safe",
         },
         {
             "name": "index-weight",
+            "rpc_command": "index_weight",
             "description": "Call xtdata.get_index_weight.",
             "requires_account": False,
             "danger": "safe",
@@ -227,6 +298,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "financials",
+            "rpc_command": "financials",
             "description": "Call xtdata.get_financial_data.",
             "requires_account": False,
             "danger": "safe",
@@ -296,6 +368,45 @@ AGENT_CAPABILITIES: dict[str, Any] = {
                 "with_account": "default true",
             },
         },
+        {
+            "name": "subscribe",
+            "rpc_command": "subscribe",
+            "description": "Subscribe to streaming quote pushes for one symbol via xtdata.subscribe_quote.",
+            "requires_account": False,
+            "danger": "safe",
+            "transports": ["server"],
+            "inputs": {"symbol": "required", "period": "default 1d", "count": "default 0"},
+            "note": (
+                "Only available in server mode. Streaming events interleave with responses on "
+                "stdout; each event line carries an 'event' field instead of 'ok'."
+            ),
+        },
+        {
+            "name": "subscribe_whole",
+            "rpc_command": "subscribe_whole",
+            "description": (
+                "Subscribe to streaming quote pushes for multiple symbols via "
+                "xtdata.subscribe_whole_quote."
+            ),
+            "requires_account": False,
+            "danger": "safe",
+            "transports": ["server"],
+            "inputs": {"symbols": "required array"},
+            "note": (
+                "Only available in server mode. Streaming events interleave with responses on "
+                "stdout; each event line carries an 'event' field instead of 'ok'."
+            ),
+        },
+        {
+            "name": "unsubscribe",
+            "rpc_command": "unsubscribe",
+            "description": "Cancel a subscription via xtdata.unsubscribe_quote.",
+            "requires_account": False,
+            "danger": "safe",
+            "transports": ["server"],
+            "inputs": {"seq": "required, the subscription id returned by subscribe/subscribe_whole"},
+            "note": "Only available in server mode.",
+        },
     ],
 }
 
@@ -307,6 +418,11 @@ AGENT_SCHEMA: dict[str, Any] = {
         "path": "optional QMT root or userdata_mini path",
         "account": "required for account/trade commands",
         "account_type": "optional, default STOCK",
+        "data_commands": (
+            "Named data commands (calendar, bars, sector-stocks, ...) accept their CLI "
+            "parameter names as JSON fields, with either dashes or underscores in the command "
+            'name, e.g. {"command":"bars","symbols":["600519.SH"],"period":"1d"}.'
+        ),
     },
     "response": {
         "ok": "boolean",
@@ -318,6 +434,7 @@ AGENT_SCHEMA: dict[str, Any] = {
         "transport": "stdin/stdout JSONL",
         "network": False,
         "line_contract": "one JSON request per input line, one JSON response per output line",
+        "events": "subscription pushes appear as lines with an event field; responses have ok field",
     },
     "danger_levels": {
         "safe": "read-only or local diagnostics",
@@ -337,6 +454,9 @@ AGENT_EXAMPLES: dict[str, Any] = {
         "args": ["沪深A股"],
         "kwargs": {},
     },
+    "calendar": {"command": "calendar", "market": "SH"},
+    "bars": {"command": "bars", "symbols": ["600519.SH"], "period": "1d", "count": 10},
+    "subscribe": {"command": "subscribe", "symbol": "600519.SH", "period": "1d"},
     "buy": {
         "command": "buy",
         "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
@@ -629,8 +749,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="handle one JSON request from stdin and print one JSON response",
         description=(
             "Read one JSON request from stdin and write one JSON response.\n"
-            "Supported commands include status, doctor, data_call, asset, positions, orders,\n"
-            "trades, buy, sell, cancel, and trade_call."
+            "Supported commands include status, doctor, data_call, every named data command\n"
+            "(calendar, bars, sector-stocks, download, ...), asset, positions, orders, trades,\n"
+            "buy, sell, cancel, and trade_call. subscribe/subscribe_whole/unsubscribe are\n"
+            "rejected here; they require server mode."
         ),
     )
     subparsers.add_parser(
@@ -638,7 +760,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a stdin/stdout JSONL request loop",
         description=(
             "Read newline-delimited JSON requests from stdin and print one JSON response per line.\n"
-            "This is a local automation loop, not a TCP server."
+            "This is a local automation loop, not a TCP server.\n"
+            "subscribe/subscribe_whole/unsubscribe are only available here; quote pushes print as\n"
+            "extra JSONL lines with an 'event' field, interleaved with normal responses."
         ),
     )
     return parser
@@ -726,123 +850,215 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+DATA_COMMAND_NAMES = {
+    "calendar",
+    "sector-list",
+    "sector-stocks",
+    "full-tick",
+    "bars",
+    "l2-quote",
+    "l2-order",
+    "l2-transaction",
+    "instrument-detail",
+    "instrument-type",
+    "trading-dates",
+    "divid-factors",
+    "holidays",
+    "period-list",
+    "ipo-info",
+    "cb-info",
+    "etf-info",
+    "index-weight",
+    "financials",
+    "download",
+}
+
+
 def _handle_data_command(args: argparse.Namespace) -> Any:
-    if args.command == "calendar":
+    # download's symbols requirement depends on --target and argparse's nargs="*" cannot express
+    # that, so the CLI keeps its own SystemExit here; _dispatch_download_command raises ValueError
+    # for the same condition when reached directly over rpc/server.
+    if args.command == "download" and args.target in {"history", "financials"} and not args.symbols:
+        raise SystemExit(f"download {args.target} requires one or more symbols")
+    return _dispatch_data_command(args.command, vars(args))
+
+
+def _dispatch_data_command(command: str, params: dict[str, Any]) -> Any:
+    """Shared CLI/RPC data-command dispatch.
+
+    ``params`` uses argparse dest names (market, symbol, symbols, fields, period, start, end,
+    count, dividend_type, no_fill_data/fill_data, complete, tables, report_type, index_code,
+    target, incrementally) so the same dict shape works whether it comes from ``vars(args)`` or a
+    raw RPC/server request.
+    """
+    if command == "calendar":
+        market = params.get("market")
+        if not market:
+            raise ValueError("calendar requires market")
         return QMTGateway.call_data(
             "get_trading_calendar",
-            args.market,
-            start_time=args.start,
-            end_time=args.end,
+            market,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
         )
-    if args.command == "sector-list":
+    if command == "sector-list":
         return QMTGateway.call_data("get_sector_list")
-    if args.command == "sector-stocks":
-        return QMTGateway.call_data("get_stock_list_in_sector", args.sector)
-    if args.command == "full-tick":
-        return QMTGateway.call_data("get_full_tick", args.symbols)
-    if args.command == "bars":
+    if command == "sector-stocks":
+        sector = params.get("sector")
+        if not sector:
+            raise ValueError("sector-stocks requires sector")
+        return QMTGateway.call_data("get_stock_list_in_sector", sector)
+    if command == "full-tick":
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError("full-tick requires symbols")
+        return QMTGateway.call_data("get_full_tick", symbols)
+    if command == "bars":
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError("bars requires symbols")
+        fill_data = params.get("fill_data", not params.get("no_fill_data", False))
         return QMTGateway.call_data(
             "get_market_data_ex",
-            args.fields,
-            args.symbols,
-            period=args.period,
-            start_time=args.start,
-            end_time=args.end,
-            count=args.count,
-            dividend_type=args.dividend_type,
-            fill_data=not args.no_fill_data,
+            params.get("fields", []),
+            symbols,
+            period=params.get("period", "1d"),
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", -1),
+            dividend_type=params.get("dividend_type", "none"),
+            fill_data=fill_data,
         )
-    if args.command == "l2-quote":
+    if command == "l2-quote":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("l2-quote requires symbol")
         return QMTGateway.call_data(
             "get_l2_quote",
-            args.fields,
-            args.symbol,
-            start_time=args.start,
-            end_time=args.end,
-            count=args.count,
+            params.get("fields", []),
+            symbol,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", -1),
         )
-    if args.command == "l2-order":
+    if command == "l2-order":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("l2-order requires symbol")
         return QMTGateway.call_data(
             "get_l2_order",
-            args.fields,
-            args.symbol,
-            start_time=args.start,
-            end_time=args.end,
-            count=args.count,
+            params.get("fields", []),
+            symbol,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", -1),
         )
-    if args.command == "l2-transaction":
+    if command == "l2-transaction":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("l2-transaction requires symbol")
         return QMTGateway.call_data(
             "get_l2_transaction",
-            args.fields,
-            args.symbol,
-            start_time=args.start,
-            end_time=args.end,
-            count=args.count,
+            params.get("fields", []),
+            symbol,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", -1),
         )
-    if args.command == "instrument-detail":
-        return QMTGateway.call_data("get_instrument_detail", args.symbol, args.complete)
-    if args.command == "instrument-type":
-        return QMTGateway.call_data("get_instrument_type", args.symbol)
-    if args.command == "trading-dates":
+    if command == "instrument-detail":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("instrument-detail requires symbol")
+        return QMTGateway.call_data("get_instrument_detail", symbol, params.get("complete", False))
+    if command == "instrument-type":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("instrument-type requires symbol")
+        return QMTGateway.call_data("get_instrument_type", symbol)
+    if command == "trading-dates":
+        market = params.get("market")
+        if not market:
+            raise ValueError("trading-dates requires market")
         return QMTGateway.call_data(
             "get_trading_dates",
-            args.market,
-            start_time=args.start,
-            end_time=args.end,
-            count=args.count,
+            market,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", -1),
         )
-    if args.command == "divid-factors":
+    if command == "divid-factors":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("divid-factors requires symbol")
         return QMTGateway.call_data(
             "get_divid_factors",
-            args.symbol,
-            start_time=args.start,
-            end_time=args.end,
+            symbol,
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
         )
-    if args.command == "holidays":
+    if command == "holidays":
         return QMTGateway.call_data("get_holidays")
-    if args.command == "period-list":
+    if command == "period-list":
         return QMTGateway.call_data("get_period_list")
-    if args.command == "ipo-info":
-        return QMTGateway.call_data("get_ipo_info", start_time=args.start, end_time=args.end)
-    if args.command == "cb-info":
-        return QMTGateway.call_data("get_cb_info", args.symbol)
-    if args.command == "etf-info":
+    if command == "ipo-info":
+        return QMTGateway.call_data(
+            "get_ipo_info", start_time=params.get("start", ""), end_time=params.get("end", "")
+        )
+    if command == "cb-info":
+        symbol = params.get("symbol")
+        if not symbol:
+            raise ValueError("cb-info requires symbol")
+        return QMTGateway.call_data("get_cb_info", symbol)
+    if command == "etf-info":
         return QMTGateway.call_data("get_etf_info")
-    if args.command == "index-weight":
-        return QMTGateway.call_data("get_index_weight", args.index_code)
-    if args.command == "financials":
+    if command == "index-weight":
+        index_code = params.get("index_code")
+        if not index_code:
+            raise ValueError("index-weight requires index_code")
+        return QMTGateway.call_data("get_index_weight", index_code)
+    if command == "financials":
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError("financials requires symbols")
         return QMTGateway.call_data(
             "get_financial_data",
-            args.symbols,
-            table_list=args.tables,
-            start_time=args.start,
-            end_time=args.end,
-            report_type=args.report_type,
+            symbols,
+            table_list=params.get("tables", []),
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            report_type=params.get("report_type", "report_time"),
         )
-    if args.command == "data-call":
-        return QMTGateway.call_data(args.method, *json.loads(args.args), **json.loads(args.kwargs))
-    if args.command == "download":
-        return _handle_download_command(args)
-    raise ValueError(f"unknown data command: {args.command}")
+    if command == "data-call":
+        return QMTGateway.call_data(
+            params["method"],
+            *json.loads(params.get("args", "[]")),
+            **json.loads(params.get("kwargs", "{}")),
+        )
+    if command == "download":
+        return _dispatch_download_command(params)
+    raise ValueError(f"unknown data command: {command}")
 
 
-def _handle_download_command(args: argparse.Namespace) -> Any:
-    target = args.target
+def _dispatch_download_command(params: dict[str, Any]) -> Any:
+    target = params.get("target")
+    if not target:
+        raise ValueError("download requires target")
+    symbols = params.get("symbols") or []
     if target == "history":
-        if not args.symbols:
-            raise SystemExit("download history requires one or more symbols")
+        if not symbols:
+            raise ValueError("download requires symbols")
         QMTGateway.call_data(
             "download_history_data2",
-            args.symbols,
-            args.period,
-            start_time=args.start,
-            end_time=args.end,
-            incrementally=True if args.incrementally else None,
+            symbols,
+            params.get("period", "1d"),
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            incrementally=True if params.get("incrementally") else None,
         )
     elif target == "financials":
-        if not args.symbols:
-            raise SystemExit("download financials requires one or more symbols")
-        QMTGateway.call_data("download_financial_data", args.symbols, table_list=args.tables)
+        if not symbols:
+            raise ValueError("download requires symbols")
+        QMTGateway.call_data("download_financial_data", symbols, table_list=params.get("tables", []))
     elif target == "sectors":
         QMTGateway.call_data("download_sector_data")
     elif target == "index-weight":
@@ -857,13 +1073,13 @@ def _handle_download_command(args: argparse.Namespace) -> Any:
         QMTGateway.call_data("download_history_contracts")
     else:
         raise ValueError(f"unknown download target: {target}")
-    return {"ok": True, "downloaded": target, "symbols": args.symbols}
+    return {"ok": True, "downloaded": target, "symbols": symbols}
 
 
-def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any]:
+def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) -> dict[str, Any]:
     request_id = request.get("id")
     try:
-        data = _handle_rpc_data(request)
+        data = _handle_rpc_data(request, allow_subscribe)
     except Exception as exc:  # noqa: BLE001 - JSON RPC boundary must report arbitrary failures.
         response = {"ok": False, "error": str(exc)}
     else:
@@ -873,7 +1089,7 @@ def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def _handle_rpc_data(request: dict[str, Any]) -> Any:
+def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> Any:
     command = request.get("command")
     if command == "capabilities":
         return AGENT_CAPABILITIES
@@ -891,6 +1107,12 @@ def _handle_rpc_data(request: dict[str, Any]) -> Any:
             *request.get("args", []),
             **request.get("kwargs", {}),
         )
+    if isinstance(command, str) and command.replace("_", "-") in DATA_COMMAND_NAMES:
+        return _dispatch_data_command(command.replace("_", "-"), request)
+    if command in {"subscribe", "subscribe_whole", "unsubscribe"}:
+        if not allow_subscribe:
+            raise ValueError("subscribe commands require server mode")
+        return _dispatch_subscribe_command(command, request)
 
     account_commands = {
         "asset",
@@ -936,6 +1158,52 @@ def _handle_rpc_data(request: dict[str, Any]) -> Any:
         )
 
 
+def _dispatch_subscribe_command(command: str, request: dict[str, Any]) -> Any:
+    if command == "subscribe":
+        symbol = request.get("symbol")
+        if not symbol:
+            raise ValueError("subscribe requires symbol")
+        period = request.get("period", "1d")
+        count = request.get("count", 0)
+        # seq is only known after call_data() returns, but the xtquant callback can fire on its
+        # own thread before that assignment happens; cb reads seq_holder lazily so a (rare) early
+        # event reports seq: None instead of raising. This small race is considered acceptable.
+        seq_holder: dict[str, Any] = {}
+
+        def cb(datas: Any) -> None:
+            _emit({"event": "quote", "seq": seq_holder.get("seq"), "symbol": symbol, "data": datas})
+
+        seq = QMTGateway.call_data("subscribe_quote", symbol, period=period, count=count, callback=cb)
+        seq_holder["seq"] = seq
+        return {"seq": seq}
+    if command == "subscribe_whole":
+        symbols = request.get("symbols")
+        if not symbols:
+            raise ValueError("subscribe_whole requires symbols")
+        seq_holder = {}
+
+        def cb(datas: Any) -> None:
+            _emit(
+                {
+                    "event": "whole_quote",
+                    "seq": seq_holder.get("seq"),
+                    "symbols": symbols,
+                    "data": datas,
+                }
+            )
+
+        seq = QMTGateway.call_data("subscribe_whole_quote", symbols, callback=cb)
+        seq_holder["seq"] = seq
+        return {"seq": seq}
+    if command == "unsubscribe":
+        seq = request.get("seq")
+        if seq is None:
+            raise ValueError("unsubscribe requires seq")
+        QMTGateway.call_data("unsubscribe_quote", seq)
+        return {"unsubscribed": seq}
+    raise ValueError(f"unknown command: {command}")
+
+
 def _rpc() -> int:
     request = json.loads((sys.stdin.read() or "{}").lstrip("\ufeff"))
     print(json.dumps(_handle_rpc_request(request), ensure_ascii=False, default=_json_default, indent=2))
@@ -947,8 +1215,8 @@ def _server() -> int:
         line = line.strip().lstrip("\ufeff")
         if not line:
             continue
-        response = _handle_rpc_request(json.loads(line))
-        print(json.dumps(response, ensure_ascii=False, default=_json_default), flush=True)
+        response = _handle_rpc_request(json.loads(line), allow_subscribe=True)
+        _emit(response)
     return 0
 
 

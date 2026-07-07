@@ -73,6 +73,9 @@ Any runtime that can start a local process and exchange JSON can use it.
 - `status` and `doctor` diagnostics.
 - Market data commands: calendar, trading dates, sectors, ticks, bars, L2 data, instrument/ETF/CB/
   IPO/index-weight metadata, and financials.
+- pandas-aware JSON output: DataFrames/Series returned by xtdata are serialized as records (a time
+  index is kept as a plain column), and NaN/NaT/`pd.NA`/numpy scalars all become plain JSON values
+  instead of invalid `NaN` tokens or unreadable object dumps.
 - `download` command for populating the local QMT cache (history, financials, sectors, index
   weight, convertible bonds, ETF info, holidays, contracts).
 - Account queries: asset, positions, orders, trades.
@@ -126,6 +129,35 @@ JSONL loop:
 
 Generic integration notes are in [`examples/agent_tool.md`](examples/agent_tool.md). A short demo
 recording script is in [`docs/demo_storyboard.md`](docs/demo_storyboard.md).
+
+All named data commands (`calendar`, `bars`, `sector-stocks`, `download`, ...) are available over
+`rpc`/`server` too, not just the CLI; send their CLI parameter names as JSON fields, for example
+`{"command":"bars","symbols":["600519.SH"],"period":"1d"}`. The command name accepts either dashes
+or underscores (`sector-stocks` or `sector_stocks`).
+
+## Server Streaming
+
+In `server` mode only, `subscribe`, `subscribe_whole`, and `unsubscribe` wrap the callback-based
+`xtdata.subscribe_quote`, `subscribe_whole_quote`, and `unsubscribe_quote`:
+
+```json
+{"command":"subscribe","symbol":"600519.SH","period":"1d"}
+{"command":"subscribe_whole","symbols":["600519.SH","000001.SZ"]}
+{"command":"unsubscribe","seq":1}
+```
+
+Subscribing responds with `{"ok":true,"data":{"seq":1}}`, and every later quote push from xtquant
+is printed as its own JSONL line carrying an `event` field instead of `ok`, interleaved with normal
+responses on the same stdout stream:
+
+```json
+{"ok":true,"data":{"seq":1}}
+{"event":"quote","seq":1,"symbol":"600519.SH","data":{"600519.SH":{"lastPrice":1500.0}}}
+```
+
+The one-shot `rpc` command and the CLI reject subscribe commands with `{"ok":false,"error":
+"subscribe commands require server mode"}`, since a subscription only makes sense while `server`
+keeps the process alive.
 
 ## QMT Paths
 

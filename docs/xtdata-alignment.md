@@ -11,10 +11,10 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 
 | xtdata function | doc section (Chinese) | CLI command | notes |
 | --- | --- | --- | --- |
-| `subscribe_quote` | 订阅单股行情数据 | not exposed | callback/long-running API; use `data-call` at own risk |
-| `subscribe_whole_quote` | 订阅全推行情数据 | not exposed | callback/long-running API; use `data-call` at own risk |
-| `unsubscribe_quote` | 反订阅行情数据 | not exposed | callback/long-running API; use `data-call` at own risk |
-| `run` | 阻塞当前线程进入订阅监听 | not exposed | callback/long-running API; use `data-call` at own risk |
+| `subscribe_quote` | 订阅单股行情数据 | `subscribe` (server mode only) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode |
+| `subscribe_whole_quote` | 订阅全推行情数据 | `subscribe_whole` (server mode only) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode |
+| `unsubscribe_quote` | 反订阅行情数据 | `unsubscribe` (server mode only) | rejected outside `server` mode |
+| `run` | 阻塞当前线程进入订阅监听 | not needed | the `server` JSONL loop already blocks reading stdin while xtquant fires subscribe callbacks on their own thread, so there is nothing left for `run` to block on; use `data-call` at own risk if a script needs it directly |
 | `subscribe_formula` | 订阅公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |
 | `unsubscribe_formula` | 反订阅公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |
 | `call_formula` | 计算公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |

@@ -68,6 +68,10 @@ def _registered_subcommand_names() -> set[str]:
 def test_capabilities_commands_match_registered_subparsers():
     subcommands = _registered_subcommand_names()
     for command in AGENT_CAPABILITIES["commands"]:
+        if command.get("transports") == ["server"]:
+            # subscribe/subscribe_whole/unsubscribe are rpc/server-only by design; they have no
+            # argparse subcommand of their own.
+            continue
         cli_name = command.get("cli_command", command["name"])
         assert cli_name in subcommands, f"{cli_name!r} has no matching registered subparser"
 

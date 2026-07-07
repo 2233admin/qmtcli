@@ -7,6 +7,23 @@ begin.
 
 ## Unreleased
 
+- Made `_json_default` pandas/numpy-aware: DataFrames (and nested dict-of-DataFrame results such
+  as `get_market_data_ex`/`get_financial_data`) are serialized as JSON records instead of dumping
+  internal `BlockManager`/`__dict__` state, a non-`RangeIndex` (typically a time index) is kept as
+  a plain column, Series become plain objects, and NaN/`pd.NaT`/`pd.NA`/numpy scalars and arrays
+  are converted to valid JSON instead of the non-standard `NaN` token or raw numpy repr. Added a
+  `pandas`/`numpy` `dev` dependency group (`[dependency-groups]`, uv's default-installed group) so
+  `uv run pytest` picks them up without needing `--extra dev`.
+- Extended `rpc`/`server` to route every named data command (`calendar`, `bars`, `sector-stocks`,
+  `download`, ...) through the same dispatch the CLI uses, accepting either the dashed CLI command
+  name or its underscore alias (for example `sector_stocks`) and the CLI's own parameter names as
+  JSON fields. Missing required parameters now raise a clear `{"ok": false, "error": "<command>
+  requires <param>"}` instead of only being caught by argparse on the CLI side.
+- Added server-mode subscription streaming: `subscribe`, `subscribe_whole`, and `unsubscribe` wrap
+  `xtdata.subscribe_quote`/`subscribe_whole_quote`/`unsubscribe_quote`; quote pushes print as
+  extra JSONL lines with an `event` field, interleaved with normal `{"ok": ...}` responses through
+  a shared print lock. These three only work in `server` mode; the one-shot `rpc` command and the
+  CLI reject them with `"subscribe commands require server mode"`.
 - Fixed `calendar` to call `xtdata.get_trading_calendar` with the required `market` argument
   (previously called with zero arguments and always failed).
 - Fixed `l2-quote`, `l2-order`, and `l2-transaction` argument mapping: symbols were being passed
