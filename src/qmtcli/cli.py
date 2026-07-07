@@ -1026,9 +1026,11 @@ def _connect(args: argparse.Namespace) -> QMTGateway:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Windows defaults stdout to the ANSI code page (GBK on zh-CN); JSON output is UTF-8.
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    # Windows defaults stdio to the ANSI code page (GBK on zh-CN); the agent contract is UTF-8
+    # JSON on both streams (RFC 8259).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
     try:
         return _run_command(args)
