@@ -310,6 +310,11 @@ class QMTGateway:
     def call_data(method: str, *args: Any, **kwargs: Any) -> Any:
         QMTGateway.add_sdk_path()
         xtdata = importlib.import_module("xtquant.xtdata")
+        # Keep stdout pure JSON: suppress the SDK's connection banner.
+        try:
+            xtdata.enable_hello = False
+        except Exception:  # noqa: BLE001 - banner suppression must never break a data call.
+            pass
         fn = getattr(xtdata, method, None)
         if fn is None or method.startswith("_"):
             raise ValueError(f"unknown xtdata method: {method}")
