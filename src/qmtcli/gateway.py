@@ -264,7 +264,9 @@ class QMTGateway:
             raise RuntimeError("xtquant is not available; install/open broker QMT first") from exc
 
         session_id = self.connection.session_id or random.randint(1, 2_147_483_647)
-        trader = xttrader.XtQuantTrader(self.connection.path, session_id=session_id)
+        # Positional on purpose: the docs call this parameter session_id but the
+        # shipped SDK names it session; positional works across both.
+        trader = xttrader.XtQuantTrader(self.connection.path, session_id)
         trader.start()
         result = trader.connect()
         if result not in (0, None):
