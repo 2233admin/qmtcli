@@ -7,6 +7,41 @@ begin.
 
 ## Unreleased
 
+## 0.3.0 - 2026-07-07
+
+- Added a `sector` command family closing the last mutating-data gap in the xtdata alignment
+  matrix: `sector create-folder`/`create` (`create_sector_folder`/`create_sector`, both taking
+  `--parent` and an `--overwrite`/`--no-overwrite` flag pair, default `overwrite=true`), `sector
+  add`/`remove-stocks`/`reset` (`add_sector`/`remove_stock_from_sector`/`reset_sector`, each taking
+  one or more symbols), and `sector remove` (`remove_sector`). Each action is its own argparse
+  subparser nested under `sector`, so required arguments (`--parent`, symbols) are enforced by
+  argparse itself on the CLI path; the shared `_dispatch_sector_command` dispatcher raises a clear
+  `ValueError` for the same conditions on the `rpc`/`server` path, which bypasses argparse. Returns
+  the raw SDK result, or `{"ok": true, "action": ..., "sector": ...}` when the SDK returns `None`.
+  Added a new `mutates_local_data` danger level for it.
+- Added `local-data` (`xtdata.get_local_data`) and `full-kline` (`xtdata.get_full_kline`) data
+  commands, matching the existing `bars` argument shape (`--fields`, `--period`, `--start`,
+  `--end`, `--count`, `--dividend-type`, `--no-fill-data`); `local-data` also takes `--data-dir` and
+  reads the local cache only (no service round-trip; run `download history` first), and
+  `full-kline` may require a 投研 (research) edition QMT client (older broker clients return
+  ErrorID 300000).
+- Added a CLI-only `watch` command: `qmtcli watch SYMBOL [SYMBOL...] [--period 1m] [--whole]`
+  subscribes (one `subscribe_quote` call per symbol, or a single `subscribe_whole_quote` call with
+  `--whole`) and then blocks in `xtdata.run()`, streaming JSONL quote/whole_quote events to stdout
+  until interrupted (`KeyboardInterrupt` is caught and mapped to a clean exit 0). It is CLI-only —
+  deliberately excluded from `DATA_COMMAND_NAMES` and not reachable over `rpc`/`server`, since
+  server mode already has `subscribe`/`subscribe_whole`/`unsubscribe` for the same purpose.
+- Updated `AGENT_CAPABILITIES`, `AGENT_SCHEMA` (`mutates_local_data` danger level), and
+  `AGENT_EXAMPLES` (`sector_add`, `watch`, `local_data`) for all of the above.
+- Updated `docs/xtdata-alignment.md`: `create_sector_folder`/`create_sector`/`add_sector`/
+  `remove_stock_from_sector`/`remove_sector`/`reset_sector` now map to `sector <action>` instead of
+  `data-call`; `get_local_data` now maps to `local-data`; `get_full_kline` now maps to `full-kline`;
+  the `subscribe_quote`/`subscribe_whole_quote` rows note the new CLI `watch` alternative; and the
+  `run` row now points at `watch` instead of "not needed".
+- Updated both READMEs (bilingual) with the new commands: `local-data`/`full-kline` examples, a
+  new "Sector Management" example block, a new "CLI Streaming (`watch`)" section mirroring
+  "Server Streaming", and a Safety Boundaries note for the new `mutates_local_data` danger level.
+
 ## 0.2.0 - 2026-07-07
 
 - `QMTGateway.add_sdk_path` now prefers an already-importable `xtquant` (installed in the active

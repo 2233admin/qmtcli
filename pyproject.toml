@@ -1,6 +1,6 @@
 [project]
 name = "qmtcli"
-version = "0.2.0"
+version = "0.3.0"
 description = "AI-native local JSON CLI bridge for QMT/XtQuant market data and guarded stock trading."
 readme = "README.md"
 requires-python = ">=3.11"

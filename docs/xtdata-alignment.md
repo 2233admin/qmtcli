@@ -11,10 +11,10 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 
 | xtdata function | doc section (Chinese) | CLI command | notes |
 | --- | --- | --- | --- |
-| `subscribe_quote` | 订阅单股行情数据 | `subscribe` (server mode only) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode |
-| `subscribe_whole_quote` | 订阅全推行情数据 | `subscribe_whole` (server mode only) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode |
+| `subscribe_quote` | 订阅单股行情数据 | `subscribe` (server mode only); also `watch` (CLI, streaming) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode on the `rpc`/CLI path |
+| `subscribe_whole_quote` | 订阅全推行情数据 | `subscribe_whole` (server mode only); also `watch --whole` (CLI, streaming) | quote pushes print as extra JSONL lines with an `event` field; rejected outside `server` mode on the `rpc`/CLI path |
 | `unsubscribe_quote` | 反订阅行情数据 | `unsubscribe` (server mode only) | rejected outside `server` mode |
-| `run` | 阻塞当前线程进入订阅监听 | not needed | the `server` JSONL loop already blocks reading stdin while xtquant fires subscribe callbacks on their own thread, so there is nothing left for `run` to block on; use `data-call` at own risk if a script needs it directly |
+| `run` | 阻塞当前线程进入订阅监听 | `watch` | the CLI `watch` command subscribes then calls `run` directly, blocking until Ctrl+C (`KeyboardInterrupt` is caught and mapped to a clean exit 0); the `server` JSONL loop still doesn't need `run` since it already blocks reading stdin while xtquant fires subscribe callbacks on their own thread |
 | `subscribe_formula` | 订阅公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |
 | `unsubscribe_formula` | 反订阅公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |
 | `call_formula` | 计算公式数据 | not exposed | callback/long-running API; use `data-call` at own risk |
@@ -22,7 +22,7 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 | `generate_index_data` | 生成板块指数数据 | not exposed | callback/long-running API; use `data-call` at own risk |
 | `get_market_data` | 获取行情数据(老接口) | `bars` | `bars` calls `get_market_data_ex`, a superset with the same field/period/time/count/dividend_type/fill_data shape |
 | `get_market_data_ex` | 获取行情数据 | `bars` | full field/period/start/end/count/dividend_type/fill_data mapping |
-| `get_local_data` | 获取本地行情数据 | `data-call` | not exposed as a named command |
+| `get_local_data` | 获取本地行情数据 | `local-data` | reads local cache only, no service round-trip; run `download history` first to populate the cache |
 | `get_full_tick` | 获取全推数据 | `full-tick` | already correct before this change |
 | `get_divid_factors` | 获取除权除息数据 | `divid-factors` | |
 | `download_history_data` | 下载历史行情数据(单股) | `data-call` | not exposed as a named command; use `download history` (below) for the batch form |
@@ -37,7 +37,7 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 | `download_etf_info` | 下载 ETF 信息 | `download etf` | |
 | `get_etf_info` | 获取 ETF 信息 | `etf-info` | |
 | `download_holiday_data` | 下载节假日数据 | `download holidays` | |
-| `get_full_kline` | 获取全推 K 线数据 | `data-call` | not exposed as a named command |
+| `get_full_kline` | 获取全推 K 线数据 | `full-kline` | may require a 投研 (research) edition QMT client; older broker clients return ErrorID 300000 |
 | `get_financial_data` | 获取财务数据 | `financials` | |
 | `download_financial_data` | 下载财务数据 | `download financials` | `download_financial_data2` variants are not separately exposed |
 | `get_instrument_detail` | 获取合约信息 | `instrument-detail` | `iscomplete` maps to `--complete` |
@@ -46,12 +46,12 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 | `get_sector_list` | 获取板块列表 | `sector-list` | already correct before this change |
 | `get_stock_list_in_sector` | 获取板块成分股 | `sector-stocks` | already correct before this change |
 | `download_sector_data` | 下载板块数据 | `download sectors` | |
-| `create_sector_folder` | 创建板块目录 | `data-call` | mutates local custom sectors; not exposed as a named command |
-| `create_sector` | 创建自定义板块 | `data-call` | mutates local custom sectors; not exposed as a named command |
-| `add_sector` | 板块增加成分股 | `data-call` | mutates local custom sectors; not exposed as a named command |
-| `remove_stock_from_sector` | 板块剔除成分股 | `data-call` | mutates local custom sectors; not exposed as a named command |
-| `remove_sector` | 删除自定义板块 | `data-call` | mutates local custom sectors; not exposed as a named command |
-| `reset_sector` | 重置板块 | `data-call` | mutates local custom sectors; not exposed as a named command |
+| `create_sector_folder` | 创建板块目录 | `sector create-folder` | mutates local custom sectors; `danger: mutates_local_data` |
+| `create_sector` | 创建自定义板块 | `sector create` | mutates local custom sectors; `danger: mutates_local_data` |
+| `add_sector` | 板块增加成分股 | `sector add` | mutates local custom sectors; `danger: mutates_local_data` |
+| `remove_stock_from_sector` | 板块剔除成分股 | `sector remove-stocks` | mutates local custom sectors; `danger: mutates_local_data` |
+| `remove_sector` | 删除自定义板块 | `sector remove` | mutates local custom sectors; `danger: mutates_local_data` |
+| `reset_sector` | 重置板块 | `sector reset` | mutates local custom sectors; `danger: mutates_local_data` |
 | `get_index_weight` | 获取指数权重 | `index-weight` | |
 | `download_index_weight` | 下载指数权重 | `download index-weight` | |
 

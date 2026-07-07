@@ -73,8 +73,13 @@ Any runtime that can start a local process and exchange JSON can use it.
   `xtquant` over the QMT-bundled copy (see [Install](#install)).
 - `status` and `doctor` diagnostics, including SDK source (`environment` / `qmt_bundled` /
   `missing`), `xtquant` version, and xtdc availability.
-- Market data commands: calendar, trading dates, sectors, ticks, bars, L2 data, instrument/ETF/CB/
-  IPO/index-weight metadata, and financials.
+- Market data commands: calendar, trading dates, sectors, ticks, bars, local cached bars
+  (`local-data`), full-push K-line (`full-kline`), L2 data, instrument/ETF/CB/IPO/index-weight
+  metadata, and financials.
+- `sector` command family for creating, populating, and deleting local custom sectors
+  (`create-folder`, `create`, `add`, `remove-stocks`, `remove`, `reset`).
+- `watch`: CLI-only live quote streaming (JSONL to stdout) via `subscribe_quote`/
+  `subscribe_whole_quote`, blocking until Ctrl+C — see [CLI Streaming](#cli-streaming-watch).
 - `fields`: static xtdata field-name reference dictionaries (tick, kline, balance, ...) extracted
   from the doc appendix. Fully offline, no QMT install needed.
 - pandas-aware JSON output: DataFrames/Series returned by xtdata are serialized as records (a time
@@ -189,6 +194,22 @@ The one-shot `rpc` command and the CLI reject subscribe commands with `{"ok":fal
 "subscribe commands require server mode"}`, since a subscription only makes sense while `server`
 keeps the process alive.
 
+## CLI Streaming (`watch`)
+
+`watch` is a CLI-only alternative to `server`-mode `subscribe`/`subscribe_whole`: it subscribes
+directly, then blocks in `xtdata.run()`, printing one JSONL line per quote push until interrupted
+(Ctrl+C exits cleanly with code 0). It is not available over `rpc`/`server`.
+
+```powershell
+qmtcli watch 600519.SH
+qmtcli watch 600519.SH 000001.SZ --period 1m
+qmtcli watch 600519.SH 000001.SZ --whole
+```
+
+```json
+{"event":"quote","symbol":"600519.SH","data":{"600519.SH":{"lastPrice":1500.0}}}
+```
+
 ## QMT Paths
 
 Pass either a QMT install root or its `userdata_mini` directory:
@@ -230,6 +251,8 @@ qmtcli sector-list
 qmtcli sector-stocks 沪深A股
 qmtcli full-tick 600519.SH 000001.SZ
 qmtcli bars 600519.SH --period 1d --count 100
+qmtcli local-data 600519.SH --period 1d --count 100
+qmtcli full-kline 600519.SH --period 1m
 qmtcli instrument-detail 600519.SH
 qmtcli instrument-type 600519.SH
 qmtcli divid-factors 600519.SH
@@ -271,6 +294,17 @@ qmtcli download cb
 qmtcli download etf
 qmtcli download holidays
 qmtcli download history-contracts
+```
+
+Manage local custom sectors (mutates local sector definitions only; `danger: mutates_local_data`):
+
+```powershell
+qmtcli sector create-folder MyGroup --parent 我的自定义板块
+qmtcli sector create MySector --parent 我的自定义板块
+qmtcli sector add MySector 600519.SH 000001.SZ
+qmtcli sector remove-stocks MySector 600519.SH
+qmtcli sector reset MySector 600519.SH
+qmtcli sector remove MySector
 ```
 
 Account and order commands require `--account`:
@@ -370,8 +404,9 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 - No broker software download or auto-install.
 - No credential storage.
 - No order retry loop.
-- `capabilities` marks order placement and cancel actions as dangerous, and marks `download` as
-  `downloads_data` since it writes into the local QMT cache.
+- `capabilities` marks order placement and cancel actions as dangerous, marks `download` as
+  `downloads_data` since it writes into the local QMT cache, and marks `sector` as
+  `mutates_local_data` since it creates/modifies local custom sector definitions.
 - A-share order volume must be a positive multiple of 100.
 - Order price must be positive.
 - Private `xtdata` / `XtQuantTrader` method names are blocked.
@@ -386,8 +421,10 @@ qmtcli schema --help
 qmtcli examples --help
 qmtcli data-call --help
 qmtcli download --help
+qmtcli sector --help
 qmtcli fields --help
 qmtcli trade-call --help
+qmtcli watch --help
 qmtcli rpc --help
 qmtcli server --help
 ```

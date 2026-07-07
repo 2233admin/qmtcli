@@ -55,6 +55,27 @@ RPC_PARITY_CASES = [
         ["instrument-detail", "600519.SH", "--complete"],
         {"command": "instrument-detail", "symbol": "600519.SH", "complete": True},
     ),
+    (
+        ["sector", "add", "MySector", "600519.SH"],
+        {"command": "sector", "action": "add", "name": "MySector", "symbols": ["600519.SH"]},
+    ),
+    (
+        ["sector", "create-folder", "MyGroup", "--parent", "我的自定义板块"],
+        {
+            "command": "sector",
+            "action": "create-folder",
+            "name": "MyGroup",
+            "parent": "我的自定义板块",
+        },
+    ),
+    (
+        ["local-data", "600519.SH", "--period", "1d"],
+        {"command": "local-data", "symbols": ["600519.SH"], "period": "1d"},
+    ),
+    (
+        ["full-kline", "600519.SH", "--period", "1m"],
+        {"command": "full-kline", "symbols": ["600519.SH"], "period": "1m"},
+    ),
 ]
 
 
@@ -88,6 +109,16 @@ MISSING_PARAM_CASES = [
     ({"command": "download"}, "requires target"),
     ({"command": "download", "target": "history"}, "requires symbols"),
     ({"command": "download", "target": "financials"}, "requires symbols"),
+    ({"command": "sector"}, "requires action"),
+    ({"command": "sector", "action": "not-a-real-action"}, "requires action"),
+    ({"command": "sector", "action": "add"}, "requires name"),
+    ({"command": "sector", "action": "add", "name": "MySector"}, "requires symbols"),
+    ({"command": "sector", "action": "remove-stocks", "name": "MySector"}, "requires symbols"),
+    ({"command": "sector", "action": "reset", "name": "MySector"}, "requires symbols"),
+    ({"command": "sector", "action": "create-folder", "name": "MyGroup"}, "requires parent"),
+    ({"command": "sector", "action": "create", "name": "MySector"}, "requires parent"),
+    ({"command": "local-data"}, "requires symbols"),
+    ({"command": "full-kline"}, "requires symbols"),
 ]
 
 
@@ -112,6 +143,20 @@ def test_rpc_underscore_alias_sector_stocks_works(call_log):
 
     assert response["ok"] is True
     assert call_log == [("get_stock_list_in_sector", ("沪深A股",), {})]
+
+
+def test_rpc_underscore_alias_local_data_works(call_log):
+    response = _handle_rpc_request({"command": "local_data", "symbols": ["600519.SH"]})
+
+    assert response["ok"] is True
+    assert call_log[0][0] == "get_local_data"
+
+
+def test_rpc_underscore_alias_full_kline_works(call_log):
+    response = _handle_rpc_request({"command": "full_kline", "symbols": ["600519.SH"]})
+
+    assert response["ok"] is True
+    assert call_log[0][0] == "get_full_kline"
 
 
 def test_rpc_dash_form_still_works(call_log):

@@ -199,6 +199,23 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "inputs": {"sector": "required sector name, for example 沪深A股"},
         },
         {
+            "name": "sector",
+            "rpc_command": "sector",
+            "description": (
+                "Create, populate, or delete a local custom xtdata sector: create-folder, create, "
+                "add, remove-stocks, remove, reset."
+            ),
+            "requires_account": False,
+            "danger": "mutates_local_data",
+            "inputs": {
+                "action": "required, one of create-folder, create, add, remove-stocks, remove, reset",
+                "name": "required folder/sector name",
+                "parent": "required for create-folder and create",
+                "symbols": "required for add, remove-stocks, and reset",
+                "overwrite": "optional, default true; create-folder and create only",
+            },
+        },
+        {
             "name": "full-tick",
             "rpc_command": "full_tick",
             "description": "Call xtdata.get_full_tick.",
@@ -222,6 +239,49 @@ AGENT_CAPABILITIES: dict[str, Any] = {
                 "dividend_type": "default none",
                 "fill_data": "default true; pass --no-fill-data to disable",
             },
+        },
+        {
+            "name": "local-data",
+            "rpc_command": "local_data",
+            "description": "Call xtdata.get_local_data.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {
+                "symbols": "one or more symbols",
+                "fields": "optional field list",
+                "period": "default 1d",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+                "dividend_type": "default none",
+                "fill_data": "default true; pass --no-fill-data to disable",
+                "data_dir": "optional custom local data directory",
+            },
+            "note": (
+                "Reads local cache only, no service round-trip; run 'download history' first to "
+                "populate the cache."
+            ),
+        },
+        {
+            "name": "full-kline",
+            "rpc_command": "full_kline",
+            "description": "Call xtdata.get_full_kline.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {
+                "symbols": "one or more symbols",
+                "fields": "optional field list",
+                "period": "default 1m",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default 1",
+                "dividend_type": "default none",
+                "fill_data": "default true; pass --no-fill-data to disable",
+            },
+            "note": (
+                "May require a 投研 (research) edition QMT client; older broker clients return "
+                "ErrorID 300000."
+            ),
         },
         {
             "name": "l2-quote",
@@ -549,6 +609,26 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "inputs": {"seq": "required, the subscription id returned by subscribe/subscribe_whole"},
             "note": "Only available in server mode.",
         },
+        {
+            "name": "watch",
+            "description": (
+                "Stream live quotes to stdout via subscribe_quote/subscribe_whole_quote followed "
+                "by xtdata.run()."
+            ),
+            "requires_account": False,
+            "danger": "safe",
+            "transports": ["cli"],
+            "inputs": {
+                "symbols": "one or more symbols",
+                "period": "default 1m",
+                "whole": "optional; use subscribe_whole_quote for all symbols in one subscription",
+            },
+            "note": (
+                "CLI only; streams JSONL events to stdout until interrupted (Ctrl+C exits cleanly "
+                "with code 0). Not available over rpc/server; server mode already has "
+                "subscribe/subscribe_whole/unsubscribe."
+            ),
+        },
     ],
 }
 
@@ -582,6 +662,7 @@ AGENT_SCHEMA: dict[str, Any] = {
         "safe": "read-only or local diagnostics",
         "escape_hatch": "calls a public SDK method selected by the caller",
         "downloads_data": "downloads data into the local QMT cache",
+        "mutates_local_data": "creates or modifies local custom sector definitions",
         "places_order": "submits a broker order",
         "cancels_order": "cancels a broker order",
     },
@@ -598,6 +679,7 @@ AGENT_EXAMPLES: dict[str, Any] = {
     },
     "calendar": {"command": "calendar", "market": "SH"},
     "bars": {"command": "bars", "symbols": ["600519.SH"], "period": "1d", "count": 10},
+    "local_data": {"command": "local_data", "symbols": ["600519.SH"], "period": "1d"},
     "fields": {"command": "fields", "kind": "tick"},
     "download": {
         "command": "download",
@@ -605,7 +687,14 @@ AGENT_EXAMPLES: dict[str, Any] = {
         "symbols": ["600519.SH"],
         "period": "1d",
     },
+    "sector_add": {
+        "command": "sector",
+        "action": "add",
+        "name": "我的自选",
+        "symbols": ["600519.SH"],
+    },
     "subscribe": {"command": "subscribe", "symbol": "600519.SH", "period": "1d"},
+    "watch": {"command": "watch", "symbols": ["600519.SH"], "period": "1m"},
     "credit_detail": {
         "command": "credit_detail",
         "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
@@ -744,6 +833,84 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sector_stocks.add_argument("sector", help="Sector name, for example: 沪深A股")
 
+    sector = subparsers.add_parser(
+        "sector",
+        help="manage local custom sectors: create-folder, create, add, remove-stocks, remove, reset",
+        description=(
+            "Create, populate, and delete local custom xtdata sectors.\n"
+            "Mutates local custom sector definitions only; does not touch broker-side sector data.\n\n"
+            "Example:\n"
+            "  qmtcli sector create-folder MyGroup --parent 我的自定义板块\n"
+            "  qmtcli sector add MySector 600519.SH 000001.SZ"
+        ),
+    )
+    sector_actions = sector.add_subparsers(dest="action", required=True)
+
+    sector_create_folder = sector_actions.add_parser(
+        "create-folder",
+        help="call xtdata.create_sector_folder",
+        description="Create a local custom sector folder via xtdata.create_sector_folder.",
+    )
+    sector_create_folder.add_argument("name", help="Folder name to create")
+    sector_create_folder.add_argument(
+        "--parent", required=True, help="Parent node name, for example 我的自定义板块"
+    )
+    sector_create_folder.add_argument(
+        "--overwrite",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Overwrite an existing folder with the same name; default: true",
+    )
+
+    sector_create = sector_actions.add_parser(
+        "create",
+        help="call xtdata.create_sector",
+        description="Create a local custom sector via xtdata.create_sector.",
+    )
+    sector_create.add_argument("name", help="Sector name to create")
+    sector_create.add_argument(
+        "--parent", required=True, help="Parent node name, for example 我的自定义板块"
+    )
+    sector_create.add_argument(
+        "--overwrite",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Overwrite an existing sector with the same name; default: true",
+    )
+
+    sector_add = sector_actions.add_parser(
+        "add",
+        help="call xtdata.add_sector",
+        description="Add stocks to a local custom sector via xtdata.add_sector.",
+    )
+    sector_add.add_argument("name", help="Sector name")
+    sector_add.add_argument("symbols", nargs="+", help="Symbols to add, for example 600519.SH")
+
+    sector_remove_stocks = sector_actions.add_parser(
+        "remove-stocks",
+        help="call xtdata.remove_stock_from_sector",
+        description="Remove stocks from a local custom sector via xtdata.remove_stock_from_sector.",
+    )
+    sector_remove_stocks.add_argument("name", help="Sector name")
+    sector_remove_stocks.add_argument("symbols", nargs="+", help="Symbols to remove")
+
+    sector_remove = sector_actions.add_parser(
+        "remove",
+        help="call xtdata.remove_sector",
+        description="Delete a local custom sector via xtdata.remove_sector.",
+    )
+    sector_remove.add_argument("name", help="Sector name to delete")
+
+    sector_reset = sector_actions.add_parser(
+        "reset",
+        help="call xtdata.reset_sector",
+        description="Replace a local custom sector's stock list via xtdata.reset_sector.",
+    )
+    sector_reset.add_argument("name", help="Sector name")
+    sector_reset.add_argument(
+        "symbols", nargs="+", help="Symbols the sector should contain after reset"
+    )
+
     full_tick = subparsers.add_parser(
         "full-tick",
         help="call xtdata.get_full_tick",
@@ -768,6 +935,67 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dividend type: none, front, back, front_ratio, back_ratio; default: none",
     )
     bars.add_argument(
+        "--no-fill-data",
+        action="store_true",
+        help="Disable forward-filling of missing bars (fill_data=False)",
+    )
+
+    local_data = subparsers.add_parser(
+        "local-data",
+        help="call xtdata.get_local_data",
+        description=(
+            "Return locally cached historical bars via xtdata.get_local_data.\n"
+            "Reads local cache only, no service round-trip; run 'download history' first to "
+            "populate the cache.\n\n"
+            "Example:\n"
+            "  qmtcli local-data 600519.SH --period 1d"
+        ),
+    )
+    local_data.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH")
+    local_data.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
+    local_data.add_argument("--period", default="1d", help="Period such as 1d, 1m, 5m; default: 1d")
+    local_data.add_argument("--start", default="", help="Start time; default: ''")
+    local_data.add_argument("--end", default="", help="End time; default: ''")
+    local_data.add_argument("--count", default=-1, type=int, help="Bar count; default: -1")
+    local_data.add_argument(
+        "--dividend-type",
+        default="none",
+        help="Dividend type: none, front, back, front_ratio, back_ratio; default: none",
+    )
+    local_data.add_argument(
+        "--no-fill-data",
+        action="store_true",
+        help="Disable forward-filling of missing bars (fill_data=False)",
+    )
+    local_data.add_argument(
+        "--data-dir",
+        default=None,
+        help="Custom local data directory; default: SDK default",
+    )
+
+    full_kline = subparsers.add_parser(
+        "full-kline",
+        help="call xtdata.get_full_kline",
+        description=(
+            "Return full-push K-line data via xtdata.get_full_kline.\n"
+            "May require a 投研 (research) edition QMT client; older broker clients return "
+            "ErrorID 300000.\n\n"
+            "Example:\n"
+            "  qmtcli full-kline 600519.SH --period 1m"
+        ),
+    )
+    full_kline.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH")
+    full_kline.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
+    full_kline.add_argument("--period", default="1m", help="Period such as 1m, 5m, 1d; default: 1m")
+    full_kline.add_argument("--start", default="", help="Start time; default: ''")
+    full_kline.add_argument("--end", default="", help="End time; default: ''")
+    full_kline.add_argument("--count", default=1, type=int, help="Bar count; default: 1")
+    full_kline.add_argument(
+        "--dividend-type",
+        default="none",
+        help="Dividend type: none, front, back, front_ratio, back_ratio; default: none",
+    )
+    full_kline.add_argument(
         "--no-fill-data",
         action="store_true",
         help="Disable forward-filling of missing bars (fill_data=False)",
@@ -991,6 +1219,29 @@ def build_parser() -> argparse.ArgumentParser:
     cancel = subparsers.add_parser("cancel", help="cancel an order by QMT order id")
     cancel.add_argument("order_id", help="QMT order id")
 
+    watch = subparsers.add_parser(
+        "watch",
+        help=(
+            "stream live quotes to stdout via subscribe_quote/subscribe_whole_quote + run "
+            "(CLI only, Ctrl+C to stop)"
+        ),
+        description=(
+            "Subscribe to one or more symbols and block, streaming JSONL quote events to stdout\n"
+            "until interrupted (Ctrl+C exits cleanly with code 0).\n"
+            "CLI only; not available over rpc/server (server mode already has "
+            "subscribe/subscribe_whole/unsubscribe).\n\n"
+            "Example:\n"
+            "  qmtcli watch 600519.SH 000001.SZ --period 1m"
+        ),
+    )
+    watch.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH 000001.SZ")
+    watch.add_argument("--period", default="1m", help="Period such as 1m, 5m, 1d; default: 1m")
+    watch.add_argument(
+        "--whole",
+        action="store_true",
+        help="Use subscribe_whole_quote for all symbols in one subscription instead of one per symbol",
+    )
+
     subparsers.add_parser(
         "rpc",
         help="handle one JSON request from stdin and print one JSON response",
@@ -1064,12 +1315,20 @@ def _run_command(args: argparse.Namespace) -> int:
     if args.command == "fields":
         _print_json(_dispatch_fields_command(args.kind))
         return 0
+    if args.command == "watch":
+        # watch is a blocking streaming command: it bypasses the single-shot _print_json flow
+        # below (its call_data("run") never returns a single JSON value to print) and is not
+        # part of DATA_COMMAND_NAMES, so it stays CLI-only and is never reachable over rpc/server.
+        return _handle_watch_command(args)
     if args.command in {
         "calendar",
         "sector-list",
         "sector-stocks",
+        "sector",
         "full-tick",
         "bars",
+        "local-data",
+        "full-kline",
         "l2-quote",
         "l2-order",
         "l2-transaction",
@@ -1124,8 +1383,11 @@ DATA_COMMAND_NAMES = {
     "calendar",
     "sector-list",
     "sector-stocks",
+    "sector",
     "full-tick",
     "bars",
+    "local-data",
+    "full-kline",
     "l2-quote",
     "l2-order",
     "l2-transaction",
@@ -1142,6 +1404,10 @@ DATA_COMMAND_NAMES = {
     "financials",
     "download",
 }
+
+# watch is deliberately NOT in DATA_COMMAND_NAMES: it is a CLI-only blocking/streaming command
+# (see _handle_watch_command) and must not become reachable over rpc/server, where server mode
+# already has subscribe/subscribe_whole/unsubscribe for the same purpose.
 
 # The three account-less trader queries: they still need a connected QMT session (path/session_id)
 # but the underlying XtQuantTrader method takes no account argument, so --account is optional and
@@ -1200,6 +1466,8 @@ def _dispatch_data_command(command: str, params: dict[str, Any]) -> Any:
         if not sector:
             raise ValueError("sector-stocks requires sector")
         return QMTGateway.call_data("get_stock_list_in_sector", sector)
+    if command == "sector":
+        return _dispatch_sector_command(params)
     if command == "full-tick":
         symbols = params.get("symbols")
         if not symbols:
@@ -1218,6 +1486,39 @@ def _dispatch_data_command(command: str, params: dict[str, Any]) -> Any:
             start_time=params.get("start", ""),
             end_time=params.get("end", ""),
             count=params.get("count", -1),
+            dividend_type=params.get("dividend_type", "none"),
+            fill_data=fill_data,
+        )
+    if command == "local-data":
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError("local-data requires symbols")
+        fill_data = params.get("fill_data", not params.get("no_fill_data", False))
+        call_kwargs: dict[str, Any] = {
+            "period": params.get("period", "1d"),
+            "start_time": params.get("start", ""),
+            "end_time": params.get("end", ""),
+            "count": params.get("count", -1),
+            "dividend_type": params.get("dividend_type", "none"),
+            "fill_data": fill_data,
+        }
+        data_dir = params.get("data_dir")
+        if data_dir:
+            call_kwargs["data_dir"] = data_dir
+        return QMTGateway.call_data("get_local_data", params.get("fields", []), symbols, **call_kwargs)
+    if command == "full-kline":
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError("full-kline requires symbols")
+        fill_data = params.get("fill_data", not params.get("no_fill_data", False))
+        return QMTGateway.call_data(
+            "get_full_kline",
+            params.get("fields", []),
+            symbols,
+            period=params.get("period", "1m"),
+            start_time=params.get("start", ""),
+            end_time=params.get("end", ""),
+            count=params.get("count", 1),
             dividend_type=params.get("dividend_type", "none"),
             fill_data=fill_data,
         )
@@ -1368,6 +1669,54 @@ def _dispatch_download_command(params: dict[str, Any]) -> Any:
     return {"ok": True, "downloaded": target, "symbols": symbols}
 
 
+# Action -> underlying xtdata method name for every `sector` action. Also doubles as the
+# authoritative list of valid actions (mirrors the argparse choices registered in build_parser).
+SECTOR_ACTION_METHODS: dict[str, str] = {
+    "create-folder": "create_sector_folder",
+    "create": "create_sector",
+    "add": "add_sector",
+    "remove-stocks": "remove_stock_from_sector",
+    "remove": "remove_sector",
+    "reset": "reset_sector",
+}
+SECTOR_ACTIONS_REQUIRING_PARENT = {"create-folder", "create"}
+SECTOR_ACTIONS_REQUIRING_SYMBOLS = {"add", "remove-stocks", "reset"}
+
+
+def _dispatch_sector_command(params: dict[str, Any]) -> Any:
+    """Shared CLI/RPC dispatch for the `sector` action family.
+
+    On the CLI path, build_parser()'s nested per-action subparsers (one for each key in
+    SECTOR_ACTION_METHODS) already enforce every required argument via argparse itself
+    (``--parent required=True``, ``symbols`` via ``nargs="+"``, ``name`` as a required positional),
+    so the checks below only ever actually fire over rpc/server, which bypasses argparse entirely.
+    """
+    action = params.get("action")
+    if not action or action not in SECTOR_ACTION_METHODS:
+        raise ValueError(f"sector requires action, one of {sorted(SECTOR_ACTION_METHODS)}")
+    name = params.get("name")
+    if not name:
+        raise ValueError(f"sector {action} requires name")
+    method = SECTOR_ACTION_METHODS[action]
+
+    if action in SECTOR_ACTIONS_REQUIRING_PARENT:
+        parent = params.get("parent")
+        if not parent:
+            raise ValueError(f"sector {action} requires parent")
+        result = QMTGateway.call_data(method, parent, name, overwrite=params.get("overwrite", True))
+    elif action in SECTOR_ACTIONS_REQUIRING_SYMBOLS:
+        symbols = params.get("symbols")
+        if not symbols:
+            raise ValueError(f"sector {action} requires symbols")
+        result = QMTGateway.call_data(method, name, symbols)
+    else:  # "remove"
+        result = QMTGateway.call_data(method, name)
+
+    if result is None:
+        return {"ok": True, "action": action, "sector": name}
+    return result
+
+
 def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) -> dict[str, Any]:
     request_id = request.get("id")
     try:
@@ -1513,6 +1862,49 @@ def _dispatch_subscribe_command(command: str, request: dict[str, Any]) -> Any:
         QMTGateway.call_data("unsubscribe_quote", seq)
         return {"unsubscribed": seq}
     raise ValueError(f"unknown command: {command}")
+
+
+def _watch_quote_callback(symbol: str) -> Any:
+    """Bind ``symbol`` for one subscribe_quote callback (closures over a loop variable would all
+    share the final value otherwise)."""
+
+    def cb(datas: Any) -> None:
+        _emit({"event": "quote", "symbol": symbol, "data": datas})
+
+    return cb
+
+
+def _handle_watch_command(args: argparse.Namespace) -> int:
+    """CLI-only: subscribe then block in xtdata.run(), streaming JSONL quote events to stdout.
+
+    Unlike subscribe/subscribe_whole (server mode only, see _dispatch_subscribe_command above),
+    this drives xtdata directly and is not reachable over rpc/server: DATA_COMMAND_NAMES
+    deliberately excludes "watch", and _run_command() dispatches here before the generic
+    single-shot _print_json data-command branch, since call_data("run") blocks until interrupted
+    instead of returning one JSON value to print.
+    """
+    if args.whole:
+        symbols = args.symbols
+
+        def cb(datas: Any) -> None:
+            _emit({"event": "whole_quote", "data": datas})
+
+        QMTGateway.call_data("subscribe_whole_quote", symbols, callback=cb)
+    else:
+        for symbol in args.symbols:
+            QMTGateway.call_data(
+                "subscribe_quote",
+                symbol,
+                period=args.period,
+                count=0,
+                callback=_watch_quote_callback(symbol),
+            )
+
+    try:
+        QMTGateway.call_data("run")
+    except KeyboardInterrupt:
+        pass
+    return 0
 
 
 def _rpc() -> int:

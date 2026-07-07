@@ -7,6 +7,7 @@ is caught immediately instead of silently breaking at runtime against a real QMT
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -194,6 +195,110 @@ DATA_COMMAND_CASES = [
         ["data-call", "get_stock_list_in_sector", "--args", '["沪深A股"]'],
         ("get_stock_list_in_sector", ("沪深A股",), {}),
     ),
+    (
+        ["sector", "create-folder", "MyGroup", "--parent", "我的自定义板块"],
+        ("create_sector_folder", ("我的自定义板块", "MyGroup"), {"overwrite": True}),
+    ),
+    (
+        ["sector", "create-folder", "MyGroup", "--parent", "我的自定义板块", "--no-overwrite"],
+        ("create_sector_folder", ("我的自定义板块", "MyGroup"), {"overwrite": False}),
+    ),
+    (
+        ["sector", "create", "MySector", "--parent", "我的自定义板块"],
+        ("create_sector", ("我的自定义板块", "MySector"), {"overwrite": True}),
+    ),
+    (
+        ["sector", "add", "MySector", "600519.SH", "000001.SZ"],
+        ("add_sector", ("MySector", ["600519.SH", "000001.SZ"]), {}),
+    ),
+    (
+        ["sector", "remove-stocks", "MySector", "600519.SH"],
+        ("remove_stock_from_sector", ("MySector", ["600519.SH"]), {}),
+    ),
+    (
+        ["sector", "remove", "MySector"],
+        ("remove_sector", ("MySector",), {}),
+    ),
+    (
+        ["sector", "reset", "MySector", "600519.SH"],
+        ("reset_sector", ("MySector", ["600519.SH"]), {}),
+    ),
+    (
+        ["local-data", "600519.SH"],
+        (
+            "get_local_data",
+            ([], ["600519.SH"]),
+            {
+                "period": "1d",
+                "start_time": "",
+                "end_time": "",
+                "count": -1,
+                "dividend_type": "none",
+                "fill_data": True,
+            },
+        ),
+    ),
+    (
+        ["local-data", "600519.SH", "--data-dir", "D:\\qmt_cache"],
+        (
+            "get_local_data",
+            ([], ["600519.SH"]),
+            {
+                "period": "1d",
+                "start_time": "",
+                "end_time": "",
+                "count": -1,
+                "dividend_type": "none",
+                "fill_data": True,
+                "data_dir": "D:\\qmt_cache",
+            },
+        ),
+    ),
+    (
+        ["local-data", "600519.SH", "--no-fill-data"],
+        (
+            "get_local_data",
+            ([], ["600519.SH"]),
+            {
+                "period": "1d",
+                "start_time": "",
+                "end_time": "",
+                "count": -1,
+                "dividend_type": "none",
+                "fill_data": False,
+            },
+        ),
+    ),
+    (
+        ["full-kline", "600519.SH"],
+        (
+            "get_full_kline",
+            ([], ["600519.SH"]),
+            {
+                "period": "1m",
+                "start_time": "",
+                "end_time": "",
+                "count": 1,
+                "dividend_type": "none",
+                "fill_data": True,
+            },
+        ),
+    ),
+    (
+        ["full-kline", "600519.SH", "--period", "5m", "--count", "10"],
+        (
+            "get_full_kline",
+            ([], ["600519.SH"]),
+            {
+                "period": "5m",
+                "start_time": "",
+                "end_time": "",
+                "count": 10,
+                "dividend_type": "none",
+                "fill_data": True,
+            },
+        ),
+    ),
 ]
 
 
@@ -229,3 +334,75 @@ def test_download_unknown_target_rejected_by_argparse():
     with pytest.raises(SystemExit) as exc:
         main(["download", "not-a-real-target"])
     assert exc.value.code == 2
+
+
+def test_sector_without_action_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector"])
+    assert exc.value.code == 2
+
+
+def test_sector_unknown_action_rejected_by_argparse():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "not-a-real-action", "MySector"])
+    assert exc.value.code == 2
+
+
+def test_sector_create_folder_without_parent_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "create-folder", "MyGroup"])
+    assert exc.value.code == 2
+
+
+def test_sector_create_without_parent_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "create", "MySector"])
+    assert exc.value.code == 2
+
+
+def test_sector_add_without_symbols_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "add", "MySector"])
+    assert exc.value.code == 2
+
+
+def test_sector_remove_stocks_without_symbols_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "remove-stocks", "MySector"])
+    assert exc.value.code == 2
+
+
+def test_sector_reset_without_symbols_exits_with_argparse_error():
+    with pytest.raises(SystemExit) as exc:
+        main(["sector", "reset", "MySector"])
+    assert exc.value.code == 2
+
+
+def test_local_data_without_symbols_rejected_by_argparse():
+    with pytest.raises(SystemExit) as exc:
+        main(["local-data"])
+    assert exc.value.code == 2
+
+
+def test_full_kline_without_symbols_rejected_by_argparse():
+    with pytest.raises(SystemExit) as exc:
+        main(["full-kline"])
+    assert exc.value.code == 2
+
+
+def test_sector_action_returns_ok_envelope_when_sdk_returns_none(monkeypatch, capsys):
+    monkeypatch.setattr(QMTGateway, "call_data", lambda method, *a, **kw: None)
+
+    assert main(["sector", "remove", "MySector"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"ok": True, "action": "remove", "sector": "MySector"}
+
+
+def test_sector_action_returns_raw_sdk_result_when_not_none(monkeypatch, capsys):
+    monkeypatch.setattr(QMTGateway, "call_data", lambda method, *a, **kw: ["some raw result"])
+
+    assert main(["sector", "remove", "MySector"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == ["some raw result"]
