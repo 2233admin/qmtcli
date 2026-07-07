@@ -7,6 +7,54 @@ begin.
 
 ## Unreleased
 
+## 0.2.0 - 2026-07-07
+
+- `QMTGateway.add_sdk_path` now prefers an already-importable `xtquant` (installed in the active
+  environment, for example via the new `sdk` extra) and only appends — never prepends/inserts —
+  the QMT-bundled `site-packages` as a fallback, so a venv's own `numpy`/`pandas` always shadow the
+  older bundled copies QMT ships alongside `xtquant`. Added a `sdk` optional-dependencies extra
+  (`pip install 'qmtcli[sdk]'` / `uv sync --extra sdk`) declaring `xtquant`/`pandas`/`numpy`.
+  `doctor` now reports `sdk_source` (`environment` / `qmt_bundled` / `missing`) and
+  `xtquant_version` (from package metadata, falling back to the module's own `__version__`).
+- Wrapped all CLI data/account command execution in a clean error envelope: any exception raised
+  while handling a command now prints `{"ok": false, "error": "<message>"}` and exits 1, instead of
+  a raw Python traceback. argparse's own usage errors (`SystemExit`, `--help`) still propagate
+  as-is, the existing `rpc`/`server` error envelopes are unchanged, and successful output keeps its
+  original unwrapped ("raw") shape.
+- Added 12 new named `XtQuantTrader` read-only query commands: `position-statistics`,
+  `credit-detail`, `stk-compacts`, `credit-subjects`, `credit-slo-code`, `credit-assure`,
+  `ipo-limit`, `com-fund`, `com-position`, `ipo-data`, `account-infos`, and `account-status`. The
+  last three wrap methods that take no account argument at all, so `--account` is optional for
+  them; `QMTGateway.connect()` gained a `subscribe` parameter so it can skip
+  `trader.subscribe(account)` in that case while still connecting a session. Extended `orders` with
+  `--cancelable-only` (`query_stock_orders(account, cancelable_only=...)`). All of the above are
+  available over `rpc`/`server` too, with the same dash/underscore command-name aliasing as the
+  existing named data commands. Added `docs/xttrader-alignment.md`, a coverage matrix for the
+  xttrader doc page mirroring `docs/xtdata-alignment.md`.
+- Added a `fields` command: static xtdata field-name reference dictionaries (`tick`, `kline`,
+  `divid`, `l2quote`, `l2order`, `l2transaction`, `l2quoteaux`, `l2orderqueue`, `balance`,
+  `income`, `cashflow`, `pershareindex`, `capital`, `top10holder`, `holdernum`, `instrument`)
+  extracted from the doc appendix by the new `scripts/extract_doc_fields.py`, shipped as
+  `src/qmtcli/xtdata_fields.json`. Fully offline — `fields` never calls into `QMTGateway`/`xtdata`.
+  `qmtcli fields` with no argument lists the available kinds and their titles.
+- Added experimental standalone xtdatacenter (xtdc) data mode: `--xtdc-token` (env fallback
+  `QMTCLI_XTDC_TOKEN`) plus `--xtdc-port` (default `58620`) make `qmtcli` call
+  `xtquant.xtdatacenter.set_token()`/`.init()` once, idempotently, before running any command via
+  the new `QMTGateway.init_xtdc()` classmethod. `doctor` reports whether
+  `xtquant.xtdatacenter` is importable as `xtdc_available`.
+- Added `scripts/check_doc_drift.py` and a weekly (plus manually-dispatchable)
+  `.github/workflows/doc-drift.yml` GitHub Action: extracts function names from the live
+  xtdata/xttrader doc pages and checks that every one is reflected somewhere in the alignment
+  matrices, filing a GitHub issue (deduplicated by title) when a doc function is missing. A
+  network fetch failure prints a warning and exits 0 instead of false-alarming the schedule.
+- Added a "Runtime caveats" section to `docs/xtdata-alignment.md` covering: function availability
+  depending on the broker QMT client build/edition regardless of SDK version (for example
+  `get_period_list` returning a server "function not realize" error on some broker builds); the
+  `sdk` extra vs. bundled-SDK tradeoff; getters that return empty until the matching `download`
+  command has populated the local cache; and the xtdc experimental note.
+- Updated `AGENT_CAPABILITIES` and `AGENT_EXAMPLES` for all of the above.
+- Updated both READMEs for the `sdk` extra, `fields`, the new trade query commands, standalone xtdc
+  mode, and the doc-drift CI check.
 - Made `_json_default` pandas/numpy-aware: DataFrames (and nested dict-of-DataFrame results such
   as `get_market_data_ex`/`get_financial_data`) are serialized as JSON records instead of dumping
   internal `BlockManager`/`__dict__` state, a non-`RangeIndex` (typically a time index) is kept as

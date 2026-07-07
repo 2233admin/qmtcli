@@ -7,6 +7,8 @@ that SDK path lazily so normal project Python can still drive QMT.
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
+import importlib.util
 import random
 import sys
 from dataclasses import dataclass
@@ -27,6 +29,21 @@ QMT_INSTALL_HINT = (
 )
 
 
+def _xtquant_spec_available() -> bool:
+    """``importlib.util.find_spec("xtquant") is not None`` without crashing on a spec-less module.
+
+    A real ``xtquant`` import always carries a proper ``__spec__``, but a module already present in
+    ``sys.modules`` with ``__spec__`` unset or None makes ``find_spec`` raise ``ValueError`` instead
+    of returning None (this happens for hand-built ``types.ModuleType`` test doubles). Both "not
+    found" and "found but spec-less" are treated the same way here: not resolvable via the
+    environment, so callers fall through to the bundled-path lookup instead of crashing.
+    """
+    try:
+        return importlib.util.find_spec("xtquant") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 @dataclass
 class QMTConnection:
     path: str
@@ -38,11 +55,30 @@ class QMTConnection:
 class QMTGateway:
     """Small wrapper around xtquant account queries and orders."""
 
+    _xtdc_initialized: bool = False
+
     def __init__(self, connection: QMTConnection):
         self.connection = connection
         self.trader: Any | None = None
         self.account: Any | None = None
         self.xtconstant: Any | None = None
+
+    @classmethod
+    def init_xtdc(cls, token: str, port: int = 58620) -> None:
+        """Initialize the xtdatacenter standalone data service (experimental).
+
+        Idempotent: a second call is a no-op. Only ``set_token``/``init`` are called, matching the
+        documented minimal sequence; ``port`` is accepted for CLI/API symmetry with
+        ``--xtdc-port`` but is not yet wired to a specific xtdatacenter call, since this surface is
+        verified only to the point of ``init()`` succeeding, not end-to-end against a real 迅投投研
+        data token (see docs/xtdata-alignment.md).
+        """
+        if cls._xtdc_initialized:
+            return
+        xtdc = importlib.import_module("xtquant.xtdatacenter")
+        xtdc.set_token(token)
+        xtdc.init()
+        cls._xtdc_initialized = True
 
     @staticmethod
     def discover_installations() -> list[dict[str, str]]:
@@ -78,6 +114,17 @@ class QMTGateway:
 
     @staticmethod
     def add_sdk_path(path: str | None = None) -> str | None:
+        """Make ``xtquant`` importable, preferring an already-installed venv/pip copy.
+
+        If ``xtquant`` already resolves without touching ``sys.path`` (installed in the active
+        environment, for example via the ``qmtcli[sdk]`` extra), do nothing and return None so the
+        environment's own numpy/pandas win. Otherwise append (never insert/prepend) the QMT-bundled
+        site-packages so a venv's own numpy/pandas continue to shadow the older bundled copies QMT
+        ships alongside xtquant.
+        """
+        if _xtquant_spec_available():
+            return None
+
         resolved = QMTGateway.resolve_path(path)
         candidates: list[Path] = []
         if resolved:
@@ -90,19 +137,26 @@ class QMTGateway:
             if (site_packages / "xtquant").exists():
                 value = str(site_packages)
                 if value not in sys.path:
-                    sys.path.insert(0, value)
+                    sys.path.append(value)
                 return value
         return None
 
     @staticmethod
     def is_available(path: str | None = None) -> bool:
         QMTGateway.add_sdk_path(path)
-        return importlib.util.find_spec("xtquant") is not None
+        return _xtquant_spec_available()
 
     @staticmethod
     def sdk_diagnostics(path: str | None = None, account_id: str | None = None) -> dict[str, Any]:
         resolved_path = QMTGateway.resolve_path(path)
+        xtquant_preresolved = _xtquant_spec_available()
         sdk_path = QMTGateway.add_sdk_path(resolved_path)
+        if xtquant_preresolved:
+            sdk_source = "environment"
+        elif sdk_path is not None:
+            sdk_source = "qmt_bundled"
+        else:
+            sdk_source = "missing"
         installations = QMTGateway.discover_installations()
         modules = {}
         for name in ("xtquant", "xtquant.xttrader", "xtquant.xttype", "xtquant.xtconstant"):
@@ -112,6 +166,19 @@ class QMTGateway:
                 modules[name] = {"ok": False, "error": str(exc)}
             else:
                 modules[name] = {"ok": True, "file": getattr(module, "__file__", None)}
+
+        try:
+            xtquant_version = importlib.metadata.version("xtquant")
+        except importlib.metadata.PackageNotFoundError:
+            xtquant_module = importlib.import_module("xtquant") if modules["xtquant"]["ok"] else None
+            xtquant_version = getattr(xtquant_module, "__version__", None) if xtquant_module else None
+
+        xtdc_available = False
+        if modules["xtquant"]["ok"]:
+            try:
+                xtdc_available = importlib.util.find_spec("xtquant.xtdatacenter") is not None
+            except (ModuleNotFoundError, ValueError):
+                xtdc_available = False
 
         xttrader = importlib.import_module("xtquant.xttrader") if modules["xtquant.xttrader"]["ok"] else None
         xttype = importlib.import_module("xtquant.xttype") if modules["xtquant.xttype"]["ok"] else None
@@ -134,6 +201,9 @@ class QMTGateway:
 
         return {
             "xtquant": xtquant_ok,
+            "sdk_source": sdk_source,
+            "xtquant_version": xtquant_version,
+            "xtdc_available": xtdc_available,
             "modules": modules,
             "features": {
                 "XtQuantTrader": bool(trader_cls),
@@ -172,7 +242,14 @@ class QMTGateway:
             "mode": "trade_enabled",
         }
 
-    def connect(self) -> None:
+    def connect(self, subscribe: bool = True) -> None:
+        """Start XtQuantTrader and connect to the local QMT service.
+
+        ``subscribe`` controls whether the account is also subscribed via ``trader.subscribe()``.
+        Pass ``subscribe=False`` (or leave ``connection.account_id`` empty) for the small set of
+        account-less trader queries (``query_ipo_data``, ``query_account_infos``,
+        ``query_account_status``) that need a connected session but take no account argument.
+        """
         resolved_path = self.resolve_path(self.connection.path)
         if not resolved_path:
             raise RuntimeError(QMT_INSTALL_HINT)
@@ -192,19 +269,26 @@ class QMTGateway:
         result = trader.connect()
         if result not in (0, None):
             raise RuntimeError(f"QMT connect failed: {result}")
-
-        account = xttype.StockAccount(self.connection.account_id, self.connection.account_type)
-        subscribed = trader.subscribe(account)
-        if subscribed not in (0, None):
-            raise RuntimeError(f"QMT account subscribe failed: {subscribed}")
-
         self.trader = trader
-        self.account = account
+
+        if subscribe and self.connection.account_id:
+            account = xttype.StockAccount(self.connection.account_id, self.connection.account_type)
+            subscribed = trader.subscribe(account)
+            if subscribed not in (0, None):
+                raise RuntimeError(f"QMT account subscribe failed: {subscribed}")
+            self.account = account
+        else:
+            self.account = None
 
     def _require_connected(self) -> tuple[Any, Any]:
         if self.trader is None or self.account is None:
             raise RuntimeError("QMTGateway is not connected")
         return self.trader, self.account
+
+    def _require_trader(self) -> Any:
+        if self.trader is None:
+            raise RuntimeError("QMTGateway is not connected")
+        return self.trader
 
     def query_asset(self) -> Any:
         trader, account = self._require_connected()
@@ -214,9 +298,9 @@ class QMTGateway:
         trader, account = self._require_connected()
         return trader.query_stock_positions(account)
 
-    def query_orders(self) -> Any:
+    def query_orders(self, cancelable_only: bool = False) -> Any:
         trader, account = self._require_connected()
-        return trader.query_stock_orders(account)
+        return trader.query_stock_orders(account, cancelable_only=cancelable_only)
 
     def query_trades(self) -> Any:
         trader, account = self._require_connected()
@@ -232,7 +316,11 @@ class QMTGateway:
         return fn(*args, **kwargs)
 
     def call_trader(self, method: str, *args: Any, with_account: bool = True, **kwargs: Any) -> Any:
-        trader, account = self._require_connected()
+        if with_account:
+            trader, account = self._require_connected()
+        else:
+            trader = self._require_trader()
+            account = None
         fn = getattr(trader, method, None)
         if fn is None or method.startswith("_"):
             raise ValueError(f"unknown XtQuantTrader method: {method}")

@@ -1,6 +1,6 @@
 [project]
 name = "qmtcli"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI-native local JSON CLI bridge for QMT/XtQuant market data and guarded stock trading."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,7 @@ Issues = "https://github.com/2233admin/qmtcli/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.4", "numpy>=2.4.6", "pandas>=3.0.3"]
+sdk = ["xtquant", "pandas", "numpy"]
 
 [project.scripts]
 qmtcli = "qmtcli.cli:main"
@@ -33,6 +34,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/qmtcli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/qmtcli/xtdata_fields.json" = "qmtcli/xtdata_fields.json"
 
 [tool.ruff]
 line-length = 100

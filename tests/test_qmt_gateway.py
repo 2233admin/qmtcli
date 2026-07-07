@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.machinery
+import importlib.metadata
+import importlib.util
 import io
 import sys
 import types
@@ -58,7 +60,8 @@ def test_qmt_gateway_queries_with_fake_xtquant(monkeypatch):
         def query_stock_positions(self, account):
             return [{"account": account.account_id, "stock_code": "600519"}]
 
-        def query_stock_orders(self, account):
+        def query_stock_orders(self, account, cancelable_only=False):
+            calls.append(("query_stock_orders", cancelable_only))
             return []
 
         def query_stock_trades(self, account):
@@ -216,3 +219,151 @@ def test_qmt_server_jsonl_status(monkeypatch, capsys):
     assert '"id": 1' in out
     assert '"ok": true' in out
     assert '"xtquant"' in out
+
+
+# --- add_sdk_path: venv-first resolution, append (never prepend) fallback ------------------------
+
+
+def test_add_sdk_path_does_nothing_when_xtquant_already_resolves(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    sys_path_before = list(sys.path)
+
+    result = QMTGateway.add_sdk_path("C:/some/qmt/path")
+
+    assert result is None
+    assert sys.path == sys_path_before
+
+
+def test_add_sdk_path_appends_bundled_path_when_not_resolvable(monkeypatch, tmp_path):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+    site_packages = tmp_path / "bin.x64" / "Lib" / "site-packages"
+    (site_packages / "xtquant").mkdir(parents=True)
+    sentinel = "C:/already/on/sys/path"
+    monkeypatch.setattr(sys, "path", [sentinel])
+
+    result = QMTGateway.add_sdk_path(str(tmp_path))
+
+    assert result == str(site_packages)
+    # Appended after existing entries, never inserted at index 0: a venv's own numpy/pandas must
+    # keep shadowing the QMT-bundled copies.
+    assert sys.path == [sentinel, str(site_packages)]
+
+
+def test_add_sdk_path_does_not_duplicate_path_entry(monkeypatch, tmp_path):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+    site_packages = tmp_path / "bin.x64" / "Lib" / "site-packages"
+    (site_packages / "xtquant").mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [str(site_packages)])
+
+    result = QMTGateway.add_sdk_path(str(tmp_path))
+
+    assert result == str(site_packages)
+    assert sys.path == [str(site_packages)]
+
+
+# --- sdk_diagnostics: sdk_source / xtquant_version --------------------------------------------
+
+
+def test_sdk_diagnostics_reports_environment_source_when_preresolved(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["sdk_source"] == "environment"
+
+
+def test_sdk_diagnostics_reports_qmt_bundled_source_when_appended(monkeypatch, tmp_path):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+    site_packages = tmp_path / "bin.x64" / "Lib" / "site-packages"
+    (site_packages / "xtquant").mkdir(parents=True)
+
+    report = QMTGateway.sdk_diagnostics(str(tmp_path))
+
+    assert report["sdk_source"] == "qmt_bundled"
+    assert report["inputs"]["sdk_path"] == str(site_packages)
+
+
+def test_sdk_diagnostics_reports_missing_source_when_nothing_found(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+
+    report = QMTGateway.sdk_diagnostics("C:/nonexistent/userdata_mini")
+
+    assert report["sdk_source"] == "missing"
+
+
+def test_sdk_diagnostics_reports_xtquant_version_from_metadata(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "250516.1.1")
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["xtquant_version"] == "250516.1.1"
+
+
+def test_sdk_diagnostics_falls_back_to_dunder_version_attribute(monkeypatch):
+    fake_xtquant = types.ModuleType("xtquant")
+    fake_xtquant.__spec__ = importlib.machinery.ModuleSpec("xtquant", loader=None)
+    fake_xtquant.__version__ = "9.9.9-bundled"
+    monkeypatch.setitem(sys.modules, "xtquant", fake_xtquant)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+
+    def fake_version(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", fake_version)
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["xtquant_version"] == "9.9.9-bundled"
+
+
+def test_sdk_diagnostics_xtquant_version_none_when_unavailable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+
+    def fake_version(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", fake_version)
+    monkeypatch.setattr(
+        importlib, "import_module", lambda name: (_ for _ in ()).throw(ImportError(name))
+    )
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["xtquant_version"] is None
+
+
+# --- sdk_diagnostics: xtdc_available -------------------------------------------------------------
+
+
+def test_sdk_diagnostics_reports_xtdc_available_true(monkeypatch):
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: object() if name in ("xtquant", "xtquant.xtdatacenter") else None,
+    )
+    monkeypatch.setitem(sys.modules, "xtquant", types.ModuleType("xtquant"))
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["xtdc_available"] is True
+
+
+def test_sdk_diagnostics_reports_xtdc_available_false(monkeypatch):
+    monkeypatch.setattr(QMTGateway, "discover_installations", lambda: [])
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: object() if name == "xtquant" else None,
+    )
+    monkeypatch.setitem(sys.modules, "xtquant", types.ModuleType("xtquant"))
+
+    report = QMTGateway.sdk_diagnostics()
+
+    assert report["xtdc_available"] is False

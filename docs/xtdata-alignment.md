@@ -62,3 +62,32 @@ argument validation beyond blocking private (`_`-prefixed) method names.
 not documented on the public xtdata doc page above; they are included here because they existed in
 the CLI before this change (with a broken argument mapping, now fixed to a single `stock_code`
 string plus `field_list`/`start_time`/`end_time`/`count`).
+
+## Runtime caveats
+
+- **Function availability depends on the broker QMT client build/edition, not just the SDK
+  version.** A function can be present and callable in `xtquant` and still fail at runtime because
+  the broker's QMT client build doesn't implement it server-side. For example, `get_period_list` on
+  a 2024-era broker build has been observed to return a server error (`ErrorID 300000`, "function
+  not realize") even when the local `xtquant` SDK is current. Treat any such error as a broker/build
+  limitation, not a `qmtcli` bug — there is no client-side workaround.
+- **Prefer a venv/pip SDK install over the bundled one.** Install with the `sdk` extra
+  (`pip install 'qmtcli[sdk]'` or `uv sync --extra sdk`) so `xtquant`/`pandas`/`numpy` come from the
+  active environment instead of the QMT install's bundled `site-packages`. `qmtcli` now resolves
+  `xtquant` from the environment first and only falls back to (and appends, never prepends) the
+  bundled QMT `site-packages` path if nothing is already importable — see `QMTGateway.add_sdk_path`.
+  The bundled SDK works but can be noticeably older than the current doc pages (for example, older
+  bundled copies have been observed to lack `get_period_list` entirely) and its bundled `numpy` can
+  conflict with a host Python's own `numpy` if it were ever given priority. `qmtcli doctor` reports
+  which source won as `sdk_source`: `environment`, `qmt_bundled`, or `missing`.
+- **Some getters return empty until the matching `download` command has been run.** `holidays`,
+  `bars`/historical K-line data, and similar local-cache-backed getters can return empty results on
+  a fresh QMT install until the corresponding `download` target (`download holidays`,
+  `download history <symbols>`, ...) has populated the local cache at least once.
+- **`--xtdc-token` / xtdatacenter standalone data mode is experimental.** Setting `--xtdc-token` (or
+  `QMTCLI_XTDC_TOKEN`) makes `qmtcli` call `xtquant.xtdatacenter.set_token()` then `.init()` before
+  running any command, so `xtdata` calls can route through the standalone 迅投投研 data service
+  instead of a local QMT client. This requires a valid 迅投投研 data token and has been verified only
+  as far as `init()` succeeding, not end-to-end against real data — `--xtdc-port` is accepted for
+  future use but is not yet wired to a specific xtdatacenter call. `qmtcli doctor` reports whether
+  the `xtquant.xtdatacenter` module itself is importable as `xtdc_available`.

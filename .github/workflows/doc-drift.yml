@@ -1,0 +1,53 @@
+name: doc-drift
+
+on:
+  schedule:
+    - cron: "0 21 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run doc drift check
+        id: drift
+        continue-on-error: true
+        run: python scripts/check_doc_drift.py 2>&1 | tee drift.txt
+      - name: Record drift status
+        id: drift_status
+        if: always()
+        run: |
+          if [ "${{ steps.drift.outcome }}" = "failure" ]; then
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: File an issue on drift
+        if: steps.drift_status.outputs.drifted == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="xtdata/xttrader doc drift detected"
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not available; skipping issue creation."
+            exit 0
+          fi
+          EXISTING_COUNT=$(gh issue list --state open --search "$TITLE in:title" --json title \
+            | jq --arg t "$TITLE" '[.[] | select(.title == $t)] | length')
+          if [ "$EXISTING_COUNT" = "0" ]; then
+            gh issue create --title "$TITLE" --body-file drift.txt
+          else
+            echo "An open issue titled '$TITLE' already exists; not creating a duplicate."
+          fi
+      - name: Fail the job if drift was detected
+        if: steps.drift_status.outputs.drifted == 'true'
+        run: exit 1

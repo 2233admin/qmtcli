@@ -69,26 +69,56 @@ Any runtime that can start a local process and exchange JSON can use it.
 
 ## Features
 
-- QMT SDK discovery from common Windows install paths.
-- `status` and `doctor` diagnostics.
+- QMT SDK discovery from common Windows install paths, preferring an already-installed venv/pip
+  `xtquant` over the QMT-bundled copy (see [Install](#install)).
+- `status` and `doctor` diagnostics, including SDK source (`environment` / `qmt_bundled` /
+  `missing`), `xtquant` version, and xtdc availability.
 - Market data commands: calendar, trading dates, sectors, ticks, bars, L2 data, instrument/ETF/CB/
   IPO/index-weight metadata, and financials.
+- `fields`: static xtdata field-name reference dictionaries (tick, kline, balance, ...) extracted
+  from the doc appendix. Fully offline, no QMT install needed.
 - pandas-aware JSON output: DataFrames/Series returned by xtdata are serialized as records (a time
   index is kept as a plain column), and NaN/NaT/`pd.NA`/numpy scalars all become plain JSON values
   instead of invalid `NaN` tokens or unreadable object dumps.
 - `download` command for populating the local QMT cache (history, financials, sectors, index
   weight, convertible bonds, ETF info, holidays, contracts).
-- Account queries: asset, positions, orders, trades.
+- Account queries: asset, positions, orders (with `--cancelable-only`), trades.
+- Trader query commands: position statistics, credit/margin queries, IPO quota and data, account
+  infos/status, and ordinary-account fund/position queries — see
+  [Trade Query Commands](#trade-query-commands).
 - Fixed-price A-share `buy`, `sell`, and `cancel`.
 - Generic `data-call` for public `xtquant.xtdata` methods.
 - Generic `trade-call` for public `XtQuantTrader` methods.
+- Optional standalone xtdatacenter (xtdc) data mode via `--xtdc-token` (experimental) — see
+  [Standalone Data Mode](#standalone-data-mode-xtdc-experimental).
 - Agent/script protocol commands: `capabilities`, `schema`, `examples`, `rpc`, `server`.
+- A scheduled `doc-drift` GitHub Action (weekly, plus manual dispatch) re-checks the alignment
+  matrices below against the live doc pages and files an issue if a new doc function is not yet
+  reflected in either matrix; see `scripts/check_doc_drift.py`.
 
-See [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md) for the full function-to-command
-coverage matrix against the official
-[xtdata docs](https://dict.thinktrader.net/nativeApi/xtdata.html).
+See [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md) and
+[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md) for the full function-to-command
+coverage matrices against the official
+[xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) and
+[xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) docs.
 
 ## Install
+
+Recommended: install with the `sdk` extra so `xtquant`/`pandas`/`numpy` come from this environment
+instead of QMT's bundled `site-packages`; the broker QMT client then only needs to provide the
+local trading/data service, not the Python SDK itself:
+
+```powershell
+uv sync --extra dev --extra sdk
+pip install -e ".[dev,sdk]"
+```
+
+Bundled-SDK fallback (no `sdk` extra) still works — `qmtcli` falls back to the QMT install's own
+`xtquant`/`numpy`/`pandas` when nothing is already importable — but the bundled copy can be older
+than the current docs (for example, some bundled builds lack `get_period_list`) and its bundled
+`numpy` should never be allowed to shadow a venv's own `numpy`. `qmtcli doctor` reports which
+source won as `sdk_source`. See [Runtime caveats](docs/xtdata-alignment.md#runtime-caveats) for
+details.
 
 For local development:
 
@@ -212,6 +242,14 @@ qmtcli index-weight 000300.SH
 qmtcli financials 600519.SH --tables Balance
 ```
 
+Static field-name reference dictionaries (fully offline, no QMT install needed):
+
+```powershell
+qmtcli fields
+qmtcli fields tick
+qmtcli fields balance
+```
+
 L2 commands require Level-2 market data permission from the broker and are not covered by the
 public xtdata doc page:
 
@@ -241,10 +279,39 @@ Account and order commands require `--account`:
 qmtcli --account ACCOUNT_ID asset
 qmtcli --account ACCOUNT_ID positions
 qmtcli --account ACCOUNT_ID orders
+qmtcli --account ACCOUNT_ID orders --cancelable-only
 qmtcli --account ACCOUNT_ID trades
 qmtcli --account ACCOUNT_ID buy 600519.SH 100 1500.00
 qmtcli --account ACCOUNT_ID sell 600519.SH 100 1500.00
 qmtcli --account ACCOUNT_ID cancel ORDER_ID
+```
+
+## Trade Query Commands
+
+These wrap named `XtQuantTrader` query methods; see
+[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md) for the full mapping. Most require
+`--account`:
+
+```powershell
+qmtcli --account ACCOUNT_ID position-statistics
+qmtcli --account ACCOUNT_ID credit-detail
+qmtcli --account ACCOUNT_ID stk-compacts
+qmtcli --account ACCOUNT_ID credit-subjects
+qmtcli --account ACCOUNT_ID credit-slo-code
+qmtcli --account ACCOUNT_ID credit-assure
+qmtcli --account ACCOUNT_ID ipo-limit
+qmtcli --account ACCOUNT_ID com-fund
+qmtcli --account ACCOUNT_ID com-position
+```
+
+`ipo-data`, `account-infos`, and `account-status` wrap `XtQuantTrader` methods that take no account
+argument at all, so `--account` is optional for these three — `qmtcli` still connects a QMT
+session, it just skips subscribing an account:
+
+```powershell
+qmtcli ipo-data
+qmtcli account-infos
+qmtcli account-status
 ```
 
 ## Escape Hatches
@@ -266,6 +333,26 @@ qmtcli --account ACCOUNT_ID trade-call method_without_account --no-account
 ```
 
 Private method names beginning with `_` are blocked.
+
+## Standalone Data Mode (xtdc, experimental)
+
+`--xtdc-token` (or the `QMTCLI_XTDC_TOKEN` environment variable) enables standalone xtdatacenter
+data mode: before running any command, `qmtcli` calls `xtquant.xtdatacenter.set_token()` and
+`.init()`, so `xtdata` calls can route through the 迅投投研 standalone data service instead of a
+local QMT client:
+
+```powershell
+$env:QMTCLI_XTDC_TOKEN = "YOUR_TOKEN"
+qmtcli calendar SH
+
+qmtcli --xtdc-token YOUR_TOKEN --xtdc-port 58620 calendar SH
+```
+
+This requires a valid 迅投投研 data token and is **experimental** — verified only as far as `init()`
+succeeding, not end-to-end against real data. `--xtdc-port` is accepted (default `58620`) but not
+yet wired to a specific xtdatacenter call. `qmtcli doctor` reports whether the
+`xtquant.xtdatacenter` module itself is importable as `xtdc_available`. See
+[Runtime caveats](docs/xtdata-alignment.md#runtime-caveats) for more.
 
 ## JSON Request Examples
 
@@ -299,6 +386,7 @@ qmtcli schema --help
 qmtcli examples --help
 qmtcli data-call --help
 qmtcli download --help
+qmtcli fields --help
 qmtcli trade-call --help
 qmtcli rpc --help
 qmtcli server --help
@@ -310,6 +398,15 @@ qmtcli server --help
 uv run --extra dev pytest -q
 uv run --extra dev ruff check .
 uv build
+```
+
+Regenerate the static `fields` catalog from the doc appendix, and check the alignment matrices for
+drift against the live doc pages (also runs on a weekly schedule in CI, see
+[`.github/workflows/doc-drift.yml`](.github/workflows/doc-drift.yml)):
+
+```powershell
+python scripts/extract_doc_fields.py
+python scripts/check_doc_drift.py
 ```
 
 For coding agents, see [`AGENTS.md`](AGENTS.md).
