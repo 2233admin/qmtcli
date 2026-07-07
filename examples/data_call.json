@@ -1,0 +1,8 @@
+{
+  "command": "data_call",
+  "method": "get_stock_list_in_sector",
+  "args": [
+    "沪深A股"
+  ],
+  "kwargs": {}
+}

@@ -1,12 +1,25 @@
 [project]
 name = "qmtcli"
 version = "0.1.0"
-description = "Small command-line bridge for local QMT/XtQuant diagnostics, data calls, and account operations."
+description = "AI-native local JSON CLI bridge for QMT/XtQuant market data and guarded stock trading."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "2233admin" }]
 dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+[project.urls]
+Homepage = "https://github.com/2233admin/qmtcli"
+Repository = "https://github.com/2233admin/qmtcli"
+Issues = "https://github.com/2233admin/qmtcli/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.4"]
