@@ -4,22 +4,22 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-AI-native local trading bridge for QMT / miniQMT.
+English | [中文](README.zh-CN.md)
 
-`qmtcli` lets AI agents use a logged-in local broker QMT client through a stable JSON CLI. Agents
-can discover capabilities, check the QMT/XtQuant environment, request market data, query accounts,
-and submit guarded stock orders without importing broker-bundled `xtquant` directly.
+Local JSON CLI for QMT / miniQMT and the bundled XtQuant SDK.
 
-中文定位：让 AI Agent 通过本地 JSON CLI 使用 QMT / XtQuant 的交易工具。
+`qmtcli` is a small bridge between a logged-in local QMT client and tools that prefer process I/O:
+agents, scripts, schedulers, notebooks, or other automation. It exposes diagnostics, market data,
+account queries, and guarded stock order commands over stable JSON stdin/stdout.
 
-![qmtcli agent flow](docs/assets/qmtcli-agent-flow.svg)
+![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 
-`qmtcli` does not download, vendor, log in to, or replace QMT. Install and log in to your broker's
-QMT client first; broker permissions and risk checks still decide what can actually trade.
+`qmtcli` does not install QMT, store credentials, bypass broker risk checks, or run a network
+service. QMT must already be installed and logged in locally.
 
-## 10-Second Demo
+## Quick Demo
 
-Agent discovery:
+Discover the command surface:
 
 ```powershell
 qmtcli capabilities
@@ -27,25 +27,25 @@ qmtcli schema
 qmtcli examples
 ```
 
-One-shot JSON request:
+Run one JSON request:
 
 ```powershell
 Get-Content examples\status.json | qmtcli rpc
 ```
 
-Long-running JSONL loop for an agent runtime:
+Run a JSONL loop for an agent or script:
 
 ```powershell
 qmtcli server
 ```
 
-Every agent-facing response is JSON:
+Response shape:
 
 ```json
 {"ok":true,"data":{}}
 ```
 
-Errors are JSON too:
+Error shape:
 
 ```json
 {"ok":false,"error":"message"}
@@ -53,29 +53,30 @@ Errors are JSON too:
 
 If a request includes `id`, the response echoes it.
 
-## Why This Exists
+## Why
 
-Most agents can run commands and exchange JSON, but QMT's `xtquant` SDK lives inside a broker
-client install and is awkward to import safely from arbitrary agent runtimes. `qmtcli` gives any
-local agent a narrow tool, including OpenClaw, Hermes, Codex, Claude, Cursor-style agents, and
-custom schedulers:
+QMT bundles `xtquant` inside the broker client install. That is fine for direct Python scripts on a
+trading machine, but awkward for agents and process-based automation. `qmtcli` keeps the QMT
+integration local and gives callers a simple JSON contract:
 
-- self-describing `capabilities`, `schema`, and `examples`;
-- stdin/stdout JSON instead of Python SDK imports;
-- credentials stay inside the logged-in QMT client;
-- read-only calls, escape hatches, order placement, and cancel actions are labeled separately;
-- tests fake `xtquant`, so CI does not need a real broker install.
+- `capabilities`, `schema`, and `examples` for discovery;
+- `rpc` for one request over stdin/stdout;
+- `server` for newline-delimited JSON requests;
+- explicit labels for read-only calls, escape hatches, order placement, and cancellation;
+- tests that fake `xtquant`, so CI does not need a broker install.
+
+Any runtime that can start a local process and exchange JSON can use it.
 
 ## Features
 
-- Agent-first protocol: `capabilities`, `schema`, `examples`, `rpc`, and JSONL `server`.
 - QMT SDK discovery from common Windows install paths.
-- `status` and `doctor` diagnostics for local `xtquant` availability.
-- Market data helpers for calendar, sectors, ticks, bars, and L2 data.
-- Account helpers for asset, positions, orders, and trades.
-- Fixed-price A-share `buy`, `sell`, and `cancel` commands.
-- Escape hatches: `data-call` for public `xtquant.xtdata` methods and `trade-call` for public
-  `XtQuantTrader` methods.
+- `status` and `doctor` diagnostics.
+- Market data commands: calendar, sectors, ticks, bars, and L2 data.
+- Account queries: asset, positions, orders, trades.
+- Fixed-price A-share `buy`, `sell`, and `cancel`.
+- Generic `data-call` for public `xtquant.xtdata` methods.
+- Generic `trade-call` for public `XtQuantTrader` methods.
+- Agent/script protocol commands: `capabilities`, `schema`, `examples`, `rpc`, `server`.
 
 ## Install
 
@@ -86,14 +87,14 @@ uv sync --extra dev
 uv run qmtcli status
 ```
 
-Editable pip install also works:
+Editable pip install:
 
 ```powershell
 pip install -e .[dev]
 qmtcli status
 ```
 
-## Agent Usage
+## Agent And Script Usage
 
 Discovery:
 
@@ -103,25 +104,25 @@ qmtcli schema
 qmtcli examples
 ```
 
-RPC:
+One-shot RPC:
 
 ```powershell
 Get-Content examples\status.json | qmtcli rpc
 Get-Content examples\data_call.json | qmtcli rpc
 ```
 
-JSONL server:
+JSONL loop:
 
 ```powershell
 .\examples\jsonl_server.ps1
 ```
 
-Generic local-agent integration notes are in [`examples/agent_tool.md`](examples/agent_tool.md).
-The README GIF script is in [`docs/demo_storyboard.md`](docs/demo_storyboard.md).
+Generic integration notes are in [`examples/agent_tool.md`](examples/agent_tool.md). A short demo
+recording script is in [`docs/demo_storyboard.md`](docs/demo_storyboard.md).
 
-## QMT Install And Paths
+## QMT Paths
 
-`qmtcli` accepts either a QMT install root or its `userdata_mini` directory:
+Pass either a QMT install root or its `userdata_mini` directory:
 
 ```powershell
 qmtcli --path D:\DFZQxtqmt_client_real_win64 doctor
@@ -208,7 +209,7 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 
 ## Safety Boundaries
 
-- Local only: no network server is opened by `server`; it reads stdin and writes stdout.
+- Local only: `server` reads stdin and writes stdout; it does not open a socket.
 - No broker software download or auto-install.
 - No credential storage.
 - No order retry loop.
@@ -216,7 +217,7 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 - A-share order volume must be a positive multiple of 100.
 - Order price must be positive.
 - Private `xtdata` / `XtQuantTrader` method names are blocked.
-- QMT account permissions, risk checks, and final execution are still controlled by QMT and the broker.
+- QMT account permissions, risk checks, and final execution remain controlled by QMT and the broker.
 
 ## Command Help
 
@@ -239,8 +240,7 @@ uv run --extra dev ruff check .
 uv build
 ```
 
-For coding agents, see [`AGENTS.md`](AGENTS.md) for the project map, safety boundaries, and first
-commands.
+For coding agents, see [`AGENTS.md`](AGENTS.md).
 
 PyPI packaging metadata is present so the name/build shape is reserved for future publishing, but
 this project is not published by this repository workflow.

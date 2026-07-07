@@ -1,8 +1,7 @@
 # qmtcli Agent Notes
 
-This repository is an agent-first Python CLI for local broker QMT / miniQMT and the bundled
-`xtquant` SDK. It should be usable by any agent runtime, including OpenClaw, Codex, Claude, and
-plain scripts.
+This repository is a Python JSON CLI for local broker QMT / miniQMT and the bundled `xtquant` SDK.
+It should be usable by any runtime that can launch a process and exchange stdin/stdout JSON.
 
 ## Agent Contract
 

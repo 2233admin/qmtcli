@@ -1,8 +1,8 @@
-# Local Agent Tool Example
+# Local Process Tool Example
 
-`qmtcli` can be exposed to any agent runtime as a local process tool. It is not tied to a specific
-agent framework: OpenClaw, Hermes, Codex, Claude, Cursor-style agents, custom schedulers, and plain
-scripts can all use the same stdin/stdout JSON contract.
+`qmtcli` can be exposed to any runtime as a local process tool. It is not tied to a specific agent
+framework. OpenClaw, Hermes, Codex, Claude, Cursor-style agents, custom schedulers, and plain scripts
+can all use the same stdin/stdout JSON contract.
 
 ## Tool
 

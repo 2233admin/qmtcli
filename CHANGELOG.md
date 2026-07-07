@@ -7,6 +7,8 @@ begin.
 
 ## Unreleased
 
+- Added generated README hero image.
+- Split documentation into English `README.md` and Chinese `README.zh-CN.md`.
 - Added generic agent compatibility wording, README architecture image, and demo GIF storyboard.
 - Added README badges, first-screen demo, Chinese positioning, and generic local-agent tool example.
 - Repositioned README and package metadata around the AI/agent-first QMT trading bridge use case.
