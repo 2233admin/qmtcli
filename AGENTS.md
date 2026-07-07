@@ -31,6 +31,8 @@ Use `uv run ...` unless the package is installed into the active global Python.
 
 - `src/qmtcli/cli.py` - argparse commands, JSON RPC, JSONL stdio loop.
 - `src/qmtcli/gateway.py` - QMT path discovery, SDK import, account/data/trade wrappers.
+- `src/qmtcli/mcp_server.py` - stdio MCP server; tools generated from `AGENT_CAPABILITIES`,
+  dispatched through `_handle_rpc_request`. Requires the optional `mcp` extra.
 - `tests/` - fake `xtquant` modules; tests must not require real QMT.
 - `examples/` - JSON and JSONL inputs for local automation.
 

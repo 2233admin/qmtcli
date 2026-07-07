@@ -7,6 +7,26 @@ begin.
 
 ## Unreleased
 
+## 0.4.0 - 2026-07-07
+
+- Added `qmtcli mcp`: a stdio MCP (Model Context Protocol) server exposing qmtcli commands as MCP
+  tools. Capabilities-driven, single source of truth: tools are generated from
+  `AGENT_CAPABILITIES` as `qmt_<name>` (dashes become underscores, for example `qmt_full_tick`,
+  `qmt_sector_stocks`, `qmt_account_infos`), and every tool call is dispatched through the
+  existing `_handle_rpc_request` rpc machinery instead of a second command registry. Excludes
+  order placement/cancellation (`buy`, `sell`, `cancel`), `trade_call` (an unguarded escape hatch
+  onto the full `XtQuantTrader` surface), and anything restricted to a transport list that
+  excludes `rpc` (the `subscribe`/`subscribe_whole`/`unsubscribe` trio, server-only; `watch`,
+  CLI-only); every other command -- `status`, `doctor`, `data_call`, `fields`, `download`, every
+  named data command, and every trade query including `asset`/`positions`/`orders`/`trades` --
+  becomes a tool, with shared optional `path`/`account`/`account_type` parameters added to every
+  tool's input schema. Ships behind a new `mcp` optional-dependencies extra (`pip install
+  'qmtcli[mcp]'` / `uv sync --extra mcp`), also added to the `dev` dependency group so tests can
+  import it; `qmtcli mcp` without the extra installed prints a clean `{"ok": false, "error": "mcp
+  extra is not installed; pip install 'qmtcli[mcp]'"}` and exits 1 instead of raising
+  `ImportError`. Added `AGENT_CAPABILITIES`/`AGENT_SCHEMA` metadata (new `mcp` transport and
+  command) and a new `tests/test_mcp_server.py`. See `src/qmtcli/mcp_server.py`.
+
 ## 0.3.0 - 2026-07-07
 
 - Added a `sector` command family closing the last mutating-data gap in the xtdata alignment

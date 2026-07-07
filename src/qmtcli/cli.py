@@ -120,7 +120,7 @@ def _dispatch_fields_command(kind: str | None) -> Any:
 
 AGENT_CAPABILITIES: dict[str, Any] = {
     "protocol": "qmtcli.agent.v1",
-    "transports": ["cli", "rpc", "server"],
+    "transports": ["cli", "rpc", "server", "mcp"],
     "commands": [
         {
             "name": "status",
@@ -629,6 +629,21 @@ AGENT_CAPABILITIES: dict[str, Any] = {
                 "subscribe/subscribe_whole/unsubscribe."
             ),
         },
+        {
+            "name": "mcp",
+            "description": "Run a stdio MCP server exposing qmtcli commands as MCP tools.",
+            "requires_account": False,
+            "danger": "safe",
+            "transports": ["cli"],
+            "note": (
+                "stdio MCP server; excludes order placement/cancel and trade_call by design -- "
+                "use the CLI for guarded trading. Tools are generated from this capability list "
+                "(qmt_<name>, dashes become underscores) and every tool call is dispatched "
+                "through the same _handle_rpc_request machinery as rpc/server, so there is no "
+                "second command registry. Requires the optional mcp extra: pip install "
+                "'qmtcli[mcp]'. See src/qmtcli/mcp_server.py."
+            ),
+        },
     ],
 }
 
@@ -657,6 +672,34 @@ AGENT_SCHEMA: dict[str, Any] = {
         "network": False,
         "line_contract": "one JSON request per input line, one JSON response per output line",
         "events": "subscription pushes appear as lines with an event field; responses have ok field",
+    },
+    "mcp": {
+        "transport": "stdio MCP (Model Context Protocol); requires the optional mcp extra",
+        "install": "pip install 'qmtcli[mcp]'; qmtcli mcp without it prints a clean error and exits 1",
+        "tool_naming": (
+            "qmt_<name> with dashes replaced by underscores, for example sector-stocks -> "
+            "qmt_sector_stocks, full-tick -> qmt_full_tick"
+        ),
+        "exclusion_policy": (
+            "Excludes danger places_order/cancels_order (buy, sell, cancel), trade_call (an "
+            "unguarded escape hatch onto the full XtQuantTrader surface), and any capability "
+            "restricted to a transports list that does not include rpc (the "
+            "subscribe/subscribe_whole/unsubscribe trio, server-only; watch, CLI-only). Every "
+            "other command -- status, doctor, data_call, fields, download, all named data "
+            "commands, and all trade queries including asset/positions/orders/trades -- becomes "
+            "a tool."
+        ),
+        "shared_params": {
+            "path": "optional QMT install root or userdata_mini path",
+            "account": "optional QMT account id; required for account/trade-query tools",
+            "account_type": "optional, default STOCK",
+        },
+        "dispatch": (
+            "Every tool call is dispatched through the same _handle_rpc_request used by rpc/"
+            "server: the resolved command name plus the tool call arguments become the request; "
+            "the response is the same {ok, data|error} envelope, returned as a single JSON text "
+            "content block."
+        ),
     },
     "danger_levels": {
         "safe": "read-only or local diagnostics",
@@ -1264,6 +1307,17 @@ def build_parser() -> argparse.ArgumentParser:
             "extra JSONL lines with an 'event' field, interleaved with normal responses."
         ),
     )
+    subparsers.add_parser(
+        "mcp",
+        help="run a stdio MCP server exposing qmtcli tools (requires the mcp extra)",
+        description=(
+            "Run a stdio MCP (Model Context Protocol) server. Tools are generated from\n"
+            "AGENT_CAPABILITIES (qmt_<name>, dashes become underscores) and every tool call is\n"
+            "dispatched through the same rpc machinery as 'rpc'/'server'.\n"
+            "Excludes buy/sell/cancel and trade_call by design; use the CLI for guarded trading.\n"
+            "Requires the optional mcp extra: pip install 'qmtcli[mcp]'."
+        ),
+    )
     return parser
 
 
@@ -1297,6 +1351,13 @@ def _run_command(args: argparse.Namespace) -> int:
         return _rpc()
     if args.command == "server":
         return _server()
+    if args.command == "mcp":
+        try:
+            from qmtcli.mcp_server import run_mcp_server
+        except ImportError:
+            _print_json({"ok": False, "error": "mcp extra is not installed; pip install 'qmtcli[mcp]'"})
+            return 1
+        return run_mcp_server()
     if args.command == "capabilities":
         _print_json(_agent_response(AGENT_CAPABILITIES))
         return 0

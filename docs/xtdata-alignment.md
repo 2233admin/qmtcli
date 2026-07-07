@@ -70,7 +70,11 @@ string plus `field_list`/`start_time`/`end_time`/`count`).
   the broker's QMT client build doesn't implement it server-side. For example, `get_period_list` on
   a 2024-era broker build has been observed to return a server error (`ErrorID 300000`, "function
   not realize") even when the local `xtquant` SDK is current. Treat any such error as a broker/build
-  limitation, not a `qmtcli` bug — there is no client-side workaround.
+  limitation, not a `qmtcli` bug — there is no client-side workaround. Functions observed to hit
+  this on the same 2024-era broker build: `get_period_list`, `download_holiday_data`,
+  `get_full_kline`, and the entire custom-sector family (`add_sector`, `remove_sector`, ...) — the
+  `sector`, `full-kline`, `period-list`, and `download holidays` commands all surface the error
+  cleanly in the JSON envelope.
 - **Prefer a venv/pip SDK install over the bundled one.** Install with the `sdk` extra
   (`pip install 'qmtcli[sdk]'` or `uv sync --extra sdk`) so `xtquant`/`pandas`/`numpy` come from the
   active environment instead of the QMT install's bundled `site-packages`. `qmtcli` now resolves

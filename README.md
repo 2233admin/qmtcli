@@ -80,6 +80,8 @@ Any runtime that can start a local process and exchange JSON can use it.
   (`create-folder`, `create`, `add`, `remove-stocks`, `remove`, `reset`).
 - `watch`: CLI-only live quote streaming (JSONL to stdout) via `subscribe_quote`/
   `subscribe_whole_quote`, blocking until Ctrl+C — see [CLI Streaming](#cli-streaming-watch).
+- `mcp`: stdio MCP server exposing qmtcli commands as MCP tools, generated from
+  `AGENT_CAPABILITIES` — see [MCP Server](#mcp-server).
 - `fields`: static xtdata field-name reference dictionaries (tick, kline, balance, ...) extracted
   from the doc appendix. Fully offline, no QMT install needed.
 - pandas-aware JSON output: DataFrames/Series returned by xtdata are serialized as records (a time
@@ -209,6 +211,46 @@ qmtcli watch 600519.SH 000001.SZ --whole
 ```json
 {"event":"quote","symbol":"600519.SH","data":{"600519.SH":{"lastPrice":1500.0}}}
 ```
+
+## MCP Server
+
+`qmtcli mcp` runs a stdio MCP (Model Context Protocol) server exposing qmtcli commands as MCP
+tools. Capabilities-driven, single source of truth: tools are generated from
+`AGENT_CAPABILITIES`, and every tool call is dispatched through the same rpc machinery as
+`rpc`/`server` — there is no second command registry.
+
+Install the `mcp` extra:
+
+```powershell
+uv sync --extra mcp
+```
+
+Run it directly (talks JSON-RPC over stdio; nothing else prints to stdout):
+
+```powershell
+qmtcli mcp
+```
+
+Register it with Claude Code:
+
+```powershell
+claude mcp add qmt -- uv run --directory D:/projects/qmtcli --extra mcp qmtcli mcp
+```
+
+Tool names are `qmt_<name>` with dashes replaced by underscores, for example `qmt_full_tick`,
+`qmt_sector_stocks`, `qmt_account_infos`. There is no persistent `--account`/`--path` like the
+CLI has — every trade-query/account tool takes optional `path`/`account`/`account_type`
+arguments per call instead.
+
+Excluded by design: `buy`, `sell`, `cancel` (order placement/cancellation) and `trade_call` (an
+unguarded escape hatch onto the full `XtQuantTrader` surface) — use the CLI directly for guarded
+trading. `watch` and the `subscribe`/`subscribe_whole`/`unsubscribe` trio are also excluded (CLI-
+only / server-only streaming, not a fit for one-shot tool calls). Everything else — `status`,
+`doctor`, `data_call`, `fields`, `download`, every named data command, and every trade query
+(`asset`, `positions`, `orders`, `trades`, ...) — is available.
+
+Without the `mcp` extra installed, `qmtcli mcp` prints
+`{"ok":false,"error":"mcp extra is not installed; pip install 'qmtcli[mcp]'"}` and exits 1.
 
 ## QMT Paths
 
@@ -427,6 +469,7 @@ qmtcli trade-call --help
 qmtcli watch --help
 qmtcli rpc --help
 qmtcli server --help
+qmtcli mcp --help
 ```
 
 ## Development
