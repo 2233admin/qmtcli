@@ -107,3 +107,21 @@ def test_nested_dict_of_symbol_to_dataframe_like_financial_data():
     out = _dump(payload)
 
     assert out["600519.SH"]["Balance"] == [{"m_anTime": 20240101, "TOTAL_ASSETS": 1000.0}]
+
+
+def test_xtquant_pyd_object_without_dict_scrapes_public_attributes():
+    class FakeAccountInfo:
+        __slots__ = ("account_id", "account_type")
+
+        def __init__(self):
+            self.account_id = "123456"
+            self.account_type = 2
+
+        def some_method(self):  # pragma: no cover - must be skipped by the scraper
+            return "x"
+
+    FakeAccountInfo.__module__ = "xtquant.xtpythonclient"
+
+    out = _dump([FakeAccountInfo()])
+
+    assert out == [{"account_id": "123456", "account_type": 2}]

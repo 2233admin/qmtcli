@@ -61,6 +61,16 @@ def _json_default(value: Any) -> Any:
         return asdict(value)
     if hasattr(value, "__dict__"):
         return value.__dict__
+    if type(value).__module__.split(".")[0] == "xtquant":
+        # xtpythonclient pyd objects (XtAccountInfo, ...) expose plain attributes but
+        # have no __dict__; scrape the public, non-callable ones.
+        return {
+            name: attr
+            for name in dir(value)
+            if not name.startswith("_")
+            for attr in [getattr(value, name, None)]
+            if not callable(attr)
+        }
     return str(value)
 
 
