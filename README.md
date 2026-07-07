@@ -71,12 +71,19 @@ Any runtime that can start a local process and exchange JSON can use it.
 
 - QMT SDK discovery from common Windows install paths.
 - `status` and `doctor` diagnostics.
-- Market data commands: calendar, sectors, ticks, bars, and L2 data.
+- Market data commands: calendar, trading dates, sectors, ticks, bars, L2 data, instrument/ETF/CB/
+  IPO/index-weight metadata, and financials.
+- `download` command for populating the local QMT cache (history, financials, sectors, index
+  weight, convertible bonds, ETF info, holidays, contracts).
 - Account queries: asset, positions, orders, trades.
 - Fixed-price A-share `buy`, `sell`, and `cancel`.
 - Generic `data-call` for public `xtquant.xtdata` methods.
 - Generic `trade-call` for public `XtQuantTrader` methods.
 - Agent/script protocol commands: `capabilities`, `schema`, `examples`, `rpc`, `server`.
+
+See [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md) for the full function-to-command
+coverage matrix against the official
+[xtdata docs](https://dict.thinktrader.net/nativeApi/xtdata.html).
 
 ## Install
 
@@ -155,14 +162,45 @@ python -m qmtcli status
 Market data:
 
 ```powershell
-qmtcli calendar
+qmtcli calendar SH
+qmtcli trading-dates SH --count 5
 qmtcli sector-list
 qmtcli sector-stocks 沪深A股
 qmtcli full-tick 600519.SH 000001.SZ
 qmtcli bars 600519.SH --period 1d --count 100
+qmtcli instrument-detail 600519.SH
+qmtcli instrument-type 600519.SH
+qmtcli divid-factors 600519.SH
+qmtcli holidays
+qmtcli period-list
+qmtcli ipo-info
+qmtcli cb-info 123001.SZ
+qmtcli etf-info
+qmtcli index-weight 000300.SH
+qmtcli financials 600519.SH --tables Balance
+```
+
+L2 commands require Level-2 market data permission from the broker and are not covered by the
+public xtdata doc page:
+
+```powershell
 qmtcli l2-quote 600519.SH
 qmtcli l2-order 600519.SH
 qmtcli l2-transaction 600519.SH
+```
+
+Download data into the local QMT cache; these calls return once the SDK download finishes and do
+not print market data themselves — use the read commands above for that:
+
+```powershell
+qmtcli download history 600519.SH --period 1d
+qmtcli download financials 600519.SH --tables Balance
+qmtcli download sectors
+qmtcli download index-weight
+qmtcli download cb
+qmtcli download etf
+qmtcli download holidays
+qmtcli download history-contracts
 ```
 
 Account and order commands require `--account`:
@@ -213,7 +251,8 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 - No broker software download or auto-install.
 - No credential storage.
 - No order retry loop.
-- `capabilities` marks order placement and cancel actions as dangerous.
+- `capabilities` marks order placement and cancel actions as dangerous, and marks `download` as
+  `downloads_data` since it writes into the local QMT cache.
 - A-share order volume must be a positive multiple of 100.
 - Order price must be positive.
 - Private `xtdata` / `XtQuantTrader` method names are blocked.
@@ -227,6 +266,7 @@ qmtcli capabilities --help
 qmtcli schema --help
 qmtcli examples --help
 qmtcli data-call --help
+qmtcli download --help
 qmtcli trade-call --help
 qmtcli rpc --help
 qmtcli server --help

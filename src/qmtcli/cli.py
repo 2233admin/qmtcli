@@ -52,10 +52,28 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "inputs": {"method": "required", "args": "optional array", "kwargs": "optional object"},
         },
         {
+            "name": "download",
+            "description": "Call an xtdata download_* function to populate the local QMT cache.",
+            "requires_account": False,
+            "danger": "downloads_data",
+            "inputs": {
+                "target": (
+                    "required, one of history, financials, sectors, index-weight, cb, etf, "
+                    "holidays, history-contracts"
+                ),
+                "symbols": "required for the history and financials targets",
+            },
+        },
+        {
             "name": "calendar",
             "description": "Call xtdata.get_trading_calendar.",
             "requires_account": False,
             "danger": "safe",
+            "inputs": {
+                "market": "required, for example SH or SZ",
+                "start": "optional start_time",
+                "end": "optional end_time",
+            },
         },
         {
             "name": "sector-list",
@@ -82,28 +100,143 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "description": "Call xtdata.get_market_data_ex.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbols": "one or more symbols", "period": "default 1d", "count": "default -1"},
+            "inputs": {
+                "symbols": "one or more symbols",
+                "fields": "optional field list",
+                "period": "default 1d",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+                "dividend_type": "default none",
+                "fill_data": "default true; pass --no-fill-data to disable",
+            },
         },
         {
             "name": "l2-quote",
             "description": "Call xtdata.get_l2_quote.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbols": "one or more symbols"},
+            "inputs": {
+                "symbol": "required single symbol",
+                "fields": "optional field list",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+            },
+            "note": "requires Level-2 data permission; not covered by the public xtdata doc page",
         },
         {
             "name": "l2-order",
             "description": "Call xtdata.get_l2_order.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbol": "required symbol"},
+            "inputs": {
+                "symbol": "required single symbol",
+                "fields": "optional field list",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+            },
+            "note": "requires Level-2 data permission; not covered by the public xtdata doc page",
         },
         {
             "name": "l2-transaction",
             "description": "Call xtdata.get_l2_transaction.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbol": "required symbol"},
+            "inputs": {
+                "symbol": "required single symbol",
+                "fields": "optional field list",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+            },
+            "note": "requires Level-2 data permission; not covered by the public xtdata doc page",
+        },
+        {
+            "name": "instrument-detail",
+            "description": "Call xtdata.get_instrument_detail.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"symbol": "required", "complete": "optional, default false"},
+        },
+        {
+            "name": "instrument-type",
+            "description": "Call xtdata.get_instrument_type.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"symbol": "required"},
+        },
+        {
+            "name": "trading-dates",
+            "description": "Call xtdata.get_trading_dates.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {
+                "market": "required, for example SH or SZ",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "count": "default -1",
+            },
+        },
+        {
+            "name": "divid-factors",
+            "description": "Call xtdata.get_divid_factors.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"symbol": "required", "start": "optional start_time", "end": "optional end_time"},
+        },
+        {
+            "name": "holidays",
+            "description": "Call xtdata.get_holidays.",
+            "requires_account": False,
+            "danger": "safe",
+        },
+        {
+            "name": "period-list",
+            "description": "Call xtdata.get_period_list.",
+            "requires_account": False,
+            "danger": "safe",
+        },
+        {
+            "name": "ipo-info",
+            "description": "Call xtdata.get_ipo_info.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"start": "optional start_time", "end": "optional end_time"},
+        },
+        {
+            "name": "cb-info",
+            "description": "Call xtdata.get_cb_info.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"symbol": "required convertible bond code, for example 123001.SZ"},
+        },
+        {
+            "name": "etf-info",
+            "description": "Call xtdata.get_etf_info.",
+            "requires_account": False,
+            "danger": "safe",
+        },
+        {
+            "name": "index-weight",
+            "description": "Call xtdata.get_index_weight.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {"index_code": "required, for example 000300.SH"},
+        },
+        {
+            "name": "financials",
+            "description": "Call xtdata.get_financial_data.",
+            "requires_account": False,
+            "danger": "safe",
+            "inputs": {
+                "symbols": "one or more symbols",
+                "tables": "optional financial table list",
+                "start": "optional start_time",
+                "end": "optional end_time",
+                "report_type": "default report_time",
+            },
         },
         {
             "name": "asset",
@@ -189,6 +322,7 @@ AGENT_SCHEMA: dict[str, Any] = {
     "danger_levels": {
         "safe": "read-only or local diagnostics",
         "escape_hatch": "calls a public SDK method selected by the caller",
+        "downloads_data": "downloads data into the local QMT cache",
         "places_order": "submits a broker order",
         "cancels_order": "cancels a broker order",
     },
@@ -246,7 +380,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("positions", help="query positions for --account")
     subparsers.add_parser("orders", help="query orders for --account")
     subparsers.add_parser("trades", help="query trades for --account")
-    subparsers.add_parser("calendar", help="call xtdata.get_trading_calendar")
+    calendar = subparsers.add_parser(
+        "calendar",
+        help="call xtdata.get_trading_calendar",
+        description="Return trading calendar days for a market via xtdata.get_trading_calendar.",
+    )
+    calendar.add_argument("market", help="Market such as SH, SZ")
+    calendar.add_argument("--start", default="", help="Start date YYYYMMDD; default: ''")
+    calendar.add_argument("--end", default="", help="End date YYYYMMDD; default: ''")
+
     subparsers.add_parser("sector-list", help="call xtdata.get_sector_list")
 
     sector_stocks = subparsers.add_parser(
@@ -269,20 +411,177 @@ def build_parser() -> argparse.ArgumentParser:
         description="Return historical bars via xtdata.get_market_data_ex.",
     )
     bars.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH")
+    bars.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
     bars.add_argument("--period", default="1d", help="Period such as 1d, 1m, 5m; default: 1d")
+    bars.add_argument("--start", default="", help="Start time; default: ''")
+    bars.add_argument("--end", default="", help="End time; default: ''")
     bars.add_argument("--count", default=-1, type=int, help="Bar count; default: -1")
+    bars.add_argument(
+        "--dividend-type",
+        default="none",
+        help="Dividend type: none, front, back, front_ratio, back_ratio; default: none",
+    )
+    bars.add_argument(
+        "--no-fill-data",
+        action="store_true",
+        help="Disable forward-filling of missing bars (fill_data=False)",
+    )
 
-    l2_quote = subparsers.add_parser("l2-quote", help="call xtdata.get_l2_quote")
-    l2_quote.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH")
+    l2_quote = subparsers.add_parser(
+        "l2-quote",
+        help="call xtdata.get_l2_quote",
+        description=(
+            "Return Level-2 quote snapshots for a single symbol via xtdata.get_l2_quote.\n"
+            "Requires Level-2 data permission; not covered by the public xtdata doc page."
+        ),
+    )
+    l2_quote.add_argument("symbol", help="Symbol such as 600519.SH")
+    l2_quote.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
+    l2_quote.add_argument("--start", default="", help="Start time; default: ''")
+    l2_quote.add_argument("--end", default="", help="End time; default: ''")
+    l2_quote.add_argument("--count", default=-1, type=int, help="Count; default: -1")
 
-    l2_order = subparsers.add_parser("l2-order", help="call xtdata.get_l2_order")
+    l2_order = subparsers.add_parser(
+        "l2-order",
+        help="call xtdata.get_l2_order",
+        description=(
+            "Return Level-2 order queue data for a single symbol via xtdata.get_l2_order.\n"
+            "Requires Level-2 data permission; not covered by the public xtdata doc page."
+        ),
+    )
     l2_order.add_argument("symbol", help="Symbol such as 600519.SH")
+    l2_order.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
+    l2_order.add_argument("--start", default="", help="Start time; default: ''")
+    l2_order.add_argument("--end", default="", help="End time; default: ''")
+    l2_order.add_argument("--count", default=-1, type=int, help="Count; default: -1")
 
     l2_transaction = subparsers.add_parser(
         "l2-transaction",
         help="call xtdata.get_l2_transaction",
+        description=(
+            "Return Level-2 transaction data for a single symbol via xtdata.get_l2_transaction.\n"
+            "Requires Level-2 data permission; not covered by the public xtdata doc page."
+        ),
     )
     l2_transaction.add_argument("symbol", help="Symbol such as 600519.SH")
+    l2_transaction.add_argument("--fields", nargs="*", default=[], help="Field list; default: all fields")
+    l2_transaction.add_argument("--start", default="", help="Start time; default: ''")
+    l2_transaction.add_argument("--end", default="", help="End time; default: ''")
+    l2_transaction.add_argument("--count", default=-1, type=int, help="Count; default: -1")
+
+    instrument_detail = subparsers.add_parser(
+        "instrument-detail",
+        help="call xtdata.get_instrument_detail",
+    )
+    instrument_detail.add_argument("symbol", help="Symbol such as 600519.SH")
+    instrument_detail.add_argument(
+        "--complete",
+        action="store_true",
+        help="Return the complete instrument detail field set",
+    )
+
+    instrument_type = subparsers.add_parser(
+        "instrument-type",
+        help="call xtdata.get_instrument_type",
+    )
+    instrument_type.add_argument("symbol", help="Symbol such as 600519.SH")
+
+    trading_dates = subparsers.add_parser(
+        "trading-dates",
+        help="call xtdata.get_trading_dates",
+    )
+    trading_dates.add_argument("market", help="Market such as SH, SZ")
+    trading_dates.add_argument("--start", default="", help="Start date YYYYMMDD; default: ''")
+    trading_dates.add_argument("--end", default="", help="End date YYYYMMDD; default: ''")
+    trading_dates.add_argument("--count", default=-1, type=int, help="Date count; default: -1")
+
+    divid_factors = subparsers.add_parser(
+        "divid-factors",
+        help="call xtdata.get_divid_factors",
+    )
+    divid_factors.add_argument("symbol", help="Symbol such as 600519.SH")
+    divid_factors.add_argument("--start", default="", help="Start time; default: ''")
+    divid_factors.add_argument("--end", default="", help="End time; default: ''")
+
+    subparsers.add_parser("holidays", help="call xtdata.get_holidays")
+    subparsers.add_parser("period-list", help="call xtdata.get_period_list")
+
+    ipo_info = subparsers.add_parser("ipo-info", help="call xtdata.get_ipo_info")
+    ipo_info.add_argument("--start", default="", help="Start time; default: ''")
+    ipo_info.add_argument("--end", default="", help="End time; default: ''")
+
+    cb_info = subparsers.add_parser("cb-info", help="call xtdata.get_cb_info")
+    cb_info.add_argument("symbol", help="Convertible bond code such as 123001.SZ")
+
+    subparsers.add_parser("etf-info", help="call xtdata.get_etf_info")
+
+    index_weight = subparsers.add_parser("index-weight", help="call xtdata.get_index_weight")
+    index_weight.add_argument("index_code", help="Index code such as 000300.SH")
+
+    financials = subparsers.add_parser(
+        "financials",
+        help="call xtdata.get_financial_data",
+    )
+    financials.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH")
+    financials.add_argument(
+        "--tables",
+        nargs="*",
+        default=[],
+        help="Financial table names such as Balance, Income; default: all tables",
+    )
+    financials.add_argument("--start", default="", help="Start time; default: ''")
+    financials.add_argument("--end", default="", help="End time; default: ''")
+    financials.add_argument(
+        "--report-type",
+        default="report_time",
+        help="report_time or announce_time; default: report_time",
+    )
+
+    download = subparsers.add_parser(
+        "download",
+        help="call an xtdata download_* function to populate the local QMT cache",
+        description=(
+            "Download data into the local QMT cache via xtdata download_* functions.\n"
+            "target: history, financials, sectors, index-weight, cb, etf, holidays, "
+            "history-contracts.\n"
+            "symbols are required for the history and financials targets.\n\n"
+            "Example:\n"
+            "  qmtcli download history 600519.SH --period 1d"
+        ),
+    )
+    download.add_argument(
+        "target",
+        choices=[
+            "history",
+            "financials",
+            "sectors",
+            "index-weight",
+            "cb",
+            "etf",
+            "holidays",
+            "history-contracts",
+        ],
+        help="What to download",
+    )
+    download.add_argument(
+        "symbols",
+        nargs="*",
+        help="Symbols; required for the history and financials targets",
+    )
+    download.add_argument("--period", default="1d", help="Period for the history target; default: 1d")
+    download.add_argument("--start", default="", help="Start time; default: ''")
+    download.add_argument("--end", default="", help="End time; default: ''")
+    download.add_argument(
+        "--incrementally",
+        action="store_true",
+        help="For the history target, only download data since the last local update",
+    )
+    download.add_argument(
+        "--tables",
+        nargs="*",
+        default=[],
+        help="Financial table names for the financials target; default: all tables",
+    )
 
     data_call = subparsers.add_parser(
         "data-call",
@@ -384,6 +683,18 @@ def main(argv: list[str] | None = None) -> int:
         "l2-order",
         "l2-transaction",
         "data-call",
+        "instrument-detail",
+        "instrument-type",
+        "trading-dates",
+        "divid-factors",
+        "holidays",
+        "period-list",
+        "ipo-info",
+        "cb-info",
+        "etf-info",
+        "index-weight",
+        "financials",
+        "download",
     }:
         _print_json(_handle_data_command(args))
         return 0
@@ -417,7 +728,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _handle_data_command(args: argparse.Namespace) -> Any:
     if args.command == "calendar":
-        return QMTGateway.call_data("get_trading_calendar")
+        return QMTGateway.call_data(
+            "get_trading_calendar",
+            args.market,
+            start_time=args.start,
+            end_time=args.end,
+        )
     if args.command == "sector-list":
         return QMTGateway.call_data("get_sector_list")
     if args.command == "sector-stocks":
@@ -427,20 +743,121 @@ def _handle_data_command(args: argparse.Namespace) -> Any:
     if args.command == "bars":
         return QMTGateway.call_data(
             "get_market_data_ex",
-            [],
+            args.fields,
             args.symbols,
             period=args.period,
+            start_time=args.start,
+            end_time=args.end,
             count=args.count,
+            dividend_type=args.dividend_type,
+            fill_data=not args.no_fill_data,
         )
     if args.command == "l2-quote":
-        return QMTGateway.call_data("get_l2_quote", args.symbols)
+        return QMTGateway.call_data(
+            "get_l2_quote",
+            args.fields,
+            args.symbol,
+            start_time=args.start,
+            end_time=args.end,
+            count=args.count,
+        )
     if args.command == "l2-order":
-        return QMTGateway.call_data("get_l2_order", args.symbol)
+        return QMTGateway.call_data(
+            "get_l2_order",
+            args.fields,
+            args.symbol,
+            start_time=args.start,
+            end_time=args.end,
+            count=args.count,
+        )
     if args.command == "l2-transaction":
-        return QMTGateway.call_data("get_l2_transaction", args.symbol)
+        return QMTGateway.call_data(
+            "get_l2_transaction",
+            args.fields,
+            args.symbol,
+            start_time=args.start,
+            end_time=args.end,
+            count=args.count,
+        )
+    if args.command == "instrument-detail":
+        return QMTGateway.call_data("get_instrument_detail", args.symbol, args.complete)
+    if args.command == "instrument-type":
+        return QMTGateway.call_data("get_instrument_type", args.symbol)
+    if args.command == "trading-dates":
+        return QMTGateway.call_data(
+            "get_trading_dates",
+            args.market,
+            start_time=args.start,
+            end_time=args.end,
+            count=args.count,
+        )
+    if args.command == "divid-factors":
+        return QMTGateway.call_data(
+            "get_divid_factors",
+            args.symbol,
+            start_time=args.start,
+            end_time=args.end,
+        )
+    if args.command == "holidays":
+        return QMTGateway.call_data("get_holidays")
+    if args.command == "period-list":
+        return QMTGateway.call_data("get_period_list")
+    if args.command == "ipo-info":
+        return QMTGateway.call_data("get_ipo_info", start_time=args.start, end_time=args.end)
+    if args.command == "cb-info":
+        return QMTGateway.call_data("get_cb_info", args.symbol)
+    if args.command == "etf-info":
+        return QMTGateway.call_data("get_etf_info")
+    if args.command == "index-weight":
+        return QMTGateway.call_data("get_index_weight", args.index_code)
+    if args.command == "financials":
+        return QMTGateway.call_data(
+            "get_financial_data",
+            args.symbols,
+            table_list=args.tables,
+            start_time=args.start,
+            end_time=args.end,
+            report_type=args.report_type,
+        )
     if args.command == "data-call":
         return QMTGateway.call_data(args.method, *json.loads(args.args), **json.loads(args.kwargs))
+    if args.command == "download":
+        return _handle_download_command(args)
     raise ValueError(f"unknown data command: {args.command}")
+
+
+def _handle_download_command(args: argparse.Namespace) -> Any:
+    target = args.target
+    if target == "history":
+        if not args.symbols:
+            raise SystemExit("download history requires one or more symbols")
+        QMTGateway.call_data(
+            "download_history_data2",
+            args.symbols,
+            args.period,
+            start_time=args.start,
+            end_time=args.end,
+            incrementally=True if args.incrementally else None,
+        )
+    elif target == "financials":
+        if not args.symbols:
+            raise SystemExit("download financials requires one or more symbols")
+        QMTGateway.call_data("download_financial_data", args.symbols, table_list=args.tables)
+    elif target == "sectors":
+        QMTGateway.call_data("download_sector_data")
+    elif target == "index-weight":
+        QMTGateway.call_data("download_index_weight")
+    elif target == "cb":
+        QMTGateway.call_data("download_cb_data")
+    elif target == "etf":
+        QMTGateway.call_data("download_etf_info")
+    elif target == "holidays":
+        QMTGateway.call_data("download_holiday_data")
+    elif target == "history-contracts":
+        QMTGateway.call_data("download_history_contracts")
+    else:
+        raise ValueError(f"unknown download target: {target}")
+    return {"ok": True, "downloaded": target, "symbols": args.symbols}
 
 
 def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any]:

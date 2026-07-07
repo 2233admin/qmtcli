@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import sys
 
-from qmtcli.cli import main
+from qmtcli.cli import AGENT_CAPABILITIES, build_parser, main
 
 
 def _json_out(capsys) -> dict:
@@ -22,6 +23,7 @@ def test_capabilities_cli_is_agent_readable(capsys):
         "status",
         "doctor",
         "data_call",
+        "download",
         "calendar",
         "sector-list",
         "sector-stocks",
@@ -30,6 +32,17 @@ def test_capabilities_cli_is_agent_readable(capsys):
         "l2-quote",
         "l2-order",
         "l2-transaction",
+        "instrument-detail",
+        "instrument-type",
+        "trading-dates",
+        "divid-factors",
+        "holidays",
+        "period-list",
+        "ipo-info",
+        "cb-info",
+        "etf-info",
+        "index-weight",
+        "financials",
         "asset",
         "positions",
         "orders",
@@ -39,9 +52,24 @@ def test_capabilities_cli_is_agent_readable(capsys):
         "cancel",
         "trade_call",
     } <= names
-    assert {"safe", "escape_hatch", "places_order"} <= {
+    assert {"safe", "escape_hatch", "downloads_data", "places_order"} <= {
         command["danger"] for command in response["data"]["commands"]
     }
+
+
+def _registered_subcommand_names() -> set[str]:
+    parser = build_parser()
+    for action in parser._actions:  # noqa: SLF001 - argparse exposes no public accessor.
+        if isinstance(action, argparse._SubParsersAction):  # noqa: SLF001
+            return set(action.choices.keys())
+    return set()
+
+
+def test_capabilities_commands_match_registered_subparsers():
+    subcommands = _registered_subcommand_names()
+    for command in AGENT_CAPABILITIES["commands"]:
+        cli_name = command.get("cli_command", command["name"])
+        assert cli_name in subcommands, f"{cli_name!r} has no matching registered subparser"
 
 
 def test_schema_cli_documents_response_contract(capsys):
