@@ -8,6 +8,14 @@
 
 A stable JSON interface in front of QMT / XtQuant, so any language and any agent can call it safely.
 
+**Current state**: 60+ CLI subcommands; checked function-by-function against the official
+[xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) doc, covering 43 functions (see
+[`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)); checked against the official
+[xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) doc, covering 25 query/trading
+method groups (see [`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)); 267 automated tests,
+all green, with `xtquant` fully faked so CI never needs a real QMT install; a weekly `doc-drift` CI
+job re-checks both matrices against the live doc pages for drift.
+
 Anyone who has automated QMT knows the friction: `xtquant` only lives inside the broker client's
 install directory, so `import`-ing it directly ties your scripts, notebooks, and agents to that one
 Python environment. Want to swap in a market-data engine written in Rust or Go? Want to wire up an

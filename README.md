@@ -8,6 +8,14 @@
 
 给 QMT / XtQuant 装一层稳定的 JSON 接口，让任何语言、任何 Agent 都能安全调用它。
 
+**现状**：60+ 条 CLI 子命令；对照官方
+[xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) 文档逐条核对 43 个函数（见
+[`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)）、对照
+[xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) 文档核对 25 组查询/交易接口
+（见[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)）；267 个自动化测试全绿，
+`xtquant` 全部 fake 掉，CI 不需要真实 QMT 环境；每周由 CI 里的 `doc-drift` job 自动重新核对一次
+是否跟官方文档产生了漂移。
+
 写过 QMT 自动化的人都懂那种别扭：`xtquant` 只塞在券商客户端安装目录里，直接 `import` 意味着
 你的脚本、Notebook、Agent 全得绑死在那一个 Python 环境上。想换成 Rust/Go 写的行情引擎？想接一个
 LLM Agent 帮你盯盘、判断异常、写交易日志？DataFrame 怎么序列化、NaN 怎么处理、每个字段该信谁的
