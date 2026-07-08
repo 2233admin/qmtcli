@@ -14,8 +14,10 @@ account queries, and guarded stock order commands over stable JSON stdin/stdout.
 
 ![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 
-`qmtcli` does not install QMT, store credentials, bypass broker risk checks, or run a network
-service. QMT must already be installed and logged in locally.
+`qmtcli` does not install or launch the QMT trading client itself, store credentials, bypass
+broker risk checks, or run a network service — but it does auto-discover and wire up the local
+XtQuant SDK environment (preferring an already-installed venv/pip `xtquant` over the QMT-bundled
+copy, see [Install](#install)). QMT must already be installed and logged in locally.
 
 ## Quick Demo
 
