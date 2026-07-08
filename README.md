@@ -9,8 +9,10 @@
 本地 JSON CLI，桥接已登录的 QMT / miniQMT（及内置 XtQuant SDK）客户端，供脚本与 Agent 调用。
 
 `qmtcli` 是一个很小的本地桥接工具：一边连接已经登录的券商 QMT 客户端，一边给偏好
-进程 I/O 的工具使用，比如 Agent、脚本、调度器、Notebook 或其他自动化程序。它通过稳定的
-stdin/stdout JSON 协议提供环境诊断、行情查询、账户查询和带基础保护的股票委托命令。
+进程 I/O 的工具使用，比如 Agent、脚本、调度器、Notebook 或其他自动化程序。迅投官方
+QMT/XtQuant API（见[新手教程](https://dict.thinktrader.net/freshman/rookie.html)）提供的
+环境诊断、行情查询、账户查询和带基础保护的股票委托能力，`qmtcli` 都通过稳定的 stdin/stdout
+JSON 命令一一实现调用。
 
 ![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 

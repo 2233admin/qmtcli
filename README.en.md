@@ -9,8 +9,10 @@
 Local JSON CLI for QMT / miniQMT and the bundled XtQuant SDK.
 
 `qmtcli` is a small bridge between a logged-in local QMT client and tools that prefer process I/O:
-agents, scripts, schedulers, notebooks, or other automation. It exposes diagnostics, market data,
-account queries, and guarded stock order commands over stable JSON stdin/stdout.
+agents, scripts, schedulers, notebooks, or other automation. Every capability the official
+QMT/XtQuant API exposes — diagnostics, market data, account queries, and guarded stock order
+placement (see the official [QMT beginner guide](https://dict.thinktrader.net/freshman/rookie.html))
+— is reachable through `qmtcli`'s stable JSON stdin/stdout commands.
 
 ![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 
