@@ -6,19 +6,32 @@
 
 中文 | [English](README.en.md)
 
-本地 JSON CLI，桥接已登录的 QMT / miniQMT（及内置 XtQuant SDK）客户端，供脚本与 Agent 调用。
+给 QMT / XtQuant 装一层稳定的 JSON 接口，让任何语言、任何 Agent 都能安全调用它。
 
-`qmtcli` 是一个很小的本地桥接工具：一边连接已经登录的券商 QMT 客户端，一边给偏好
-进程 I/O 的工具使用，比如 Agent、脚本、调度器、Notebook 或其他自动化程序。迅投官方
-QMT/XtQuant API（见[新手教程](https://dict.thinktrader.net/freshman/rookie.html)）提供的
-环境诊断、行情查询、账户查询和带基础保护的股票委托能力，`qmtcli` 都通过稳定的 stdin/stdout
-JSON 命令一一实现调用。
+写过 QMT 自动化的人都懂那种别扭：`xtquant` 只塞在券商客户端安装目录里，直接 `import` 意味着
+你的脚本、Notebook、Agent 全得绑死在那一个 Python 环境上。想换成 Rust/Go 写的行情引擎？想接一个
+LLM Agent 帮你盯盘、判断异常、写交易日志？DataFrame 怎么序列化、NaN 怎么处理、每个字段该信谁的
+编码，全变成你自己的事。
+
+`qmtcli` 就是为了把这些活一次做完：本机起一个小进程，喂 JSON 进去，吐 JSON 出来，背后连的还是
+你已经登录的那个 QMT 客户端。迅投官方 QMT/XtQuant API（见
+[新手教程](https://dict.thinktrader.net/freshman/rookie.html)）提供的环境诊断、行情查询、账户
+查询和带基础保护的股票委托能力，都能通过这份稳定的 stdin/stdout JSON 契约一一调到。
 
 ![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 
 `qmtcli` 不安装或启动 QMT 交易客户端本身，不保存凭据，不绕过券商风控，也不启动网络服务——但
 它会自动探测并接好本机已安装的 XtQuant SDK 环境（优先用 venv/pip 里的 `xtquant`，找不到再退回
 QMT 自带的那份，见[安装](#安装)）。使用前需要先在本机安装并登录 QMT。
+
+## 适合谁
+
+- 想让 LLM Agent（Claude、GPT、本地模型）直接查行情、看持仓、甚至下单的人——`qmtcli mcp` 一条
+  命令接进 MCP，工具从能力清单自动生成，不用手写第二套注册表。
+- 想用 Rust、Go、Node.js 写量化系统，又不想专门为了调 QMT 起一个 Python 侧车服务的人。
+- 想要一份稳定的 JSON 契约，而不是每次券商升级 QMT 就得重新猜 `xtquant` 参数和字段变化的人。
+- 需要在 CI 里跑测试，但构建机上根本没装 QMT 的人——测试套件 fake 了 `xtquant`，CI 不用真实
+  券商环境也能跑通。
 
 ## 快速演示
 
@@ -58,9 +71,10 @@ qmtcli server
 
 ## 为什么需要
 
-QMT 把 `xtquant` 放在券商客户端安装目录里。直接在交易机上写 Python 脚本时还算方便，
-但对 Agent 或基于进程的自动化程序来说，直接 import SDK 并不稳定。`qmtcli` 把 QMT 集成
-留在本机，只对外提供简单 JSON 合约：
+QMT 把 `xtquant` 放在券商客户端安装目录里。直接在交易机上写 Python 脚本时还算方便，但对 Agent
+或基于进程的自动化程序来说，直接 `import` SDK 并不稳定——依赖 QMT 自带的 `numpy`/`pandas` 版本，
+一次静默升级就可能改变 DataFrame 的序列化方式，或者悄悄丢掉一个字段。`qmtcli` 把这些不稳定
+留在本机、留给一个可以随时重启的子进程，对外只提供一份简单、可测试、跨版本稳定的 JSON 合约：
 
 - `capabilities`、`schema`、`examples` 用于能力发现；
 - `rpc` 用于 stdin/stdout 单请求；
@@ -480,3 +494,8 @@ python scripts/check_doc_drift.py
 给代码 Agent 的项目说明见 [`AGENTS.md`](AGENTS.md)。
 
 当前仓库保留了 PyPI 打包元数据，但不在当前工作流中发布。
+
+## 反馈
+
+如果 `qmtcli` 帮你省下了对接 QMT 的麻烦，欢迎点个 star——这是让更多人发现它最直接的方式。
+用出问题、缺了什么命令、想接的 Agent 框架不顺手，也欢迎开 issue 或直接提 PR。

@@ -6,13 +6,19 @@
 
 [中文](README.md) | English
 
-Local JSON CLI for QMT / miniQMT and the bundled XtQuant SDK.
+A stable JSON interface in front of QMT / XtQuant, so any language and any agent can call it safely.
 
-`qmtcli` is a small bridge between a logged-in local QMT client and tools that prefer process I/O:
-agents, scripts, schedulers, notebooks, or other automation. Every capability the official
-QMT/XtQuant API exposes — diagnostics, market data, account queries, and guarded stock order
-placement (see the official [QMT beginner guide](https://dict.thinktrader.net/freshman/rookie.html))
-— is reachable through `qmtcli`'s stable JSON stdin/stdout commands.
+Anyone who has automated QMT knows the friction: `xtquant` only lives inside the broker client's
+install directory, so `import`-ing it directly ties your scripts, notebooks, and agents to that one
+Python environment. Want to swap in a market-data engine written in Rust or Go? Want to wire up an
+LLM agent to watch positions, flag anomalies, and write trade logs? Suddenly serializing DataFrames,
+handling NaN, and guessing which field encoding to trust are your problem too.
+
+`qmtcli` exists to do that work once: it starts a small local process, takes JSON in, hands JSON
+back, and talks to the QMT client you already have logged in. Everything the official QMT/XtQuant
+API exposes — diagnostics, market data, account queries, and guarded stock order placement (see the
+official [QMT beginner guide](https://dict.thinktrader.net/freshman/rookie.html)) — is reachable
+through this one stable stdin/stdout JSON contract.
 
 ![qmtcli local JSON bridge](docs/assets/qmtcli-hero.png)
 
@@ -20,6 +26,18 @@ placement (see the official [QMT beginner guide](https://dict.thinktrader.net/fr
 broker risk checks, or run a network service — but it does auto-discover and wire up the local
 XtQuant SDK environment (preferring an already-installed venv/pip `xtquant` over the QMT-bundled
 copy, see [Install](#install)). QMT must already be installed and logged in locally.
+
+## Who This Is For
+
+- Anyone who wants an LLM agent (Claude, GPT, a local model) to check quotes, read positions, or
+  place guarded orders directly — `qmtcli mcp` wires it into MCP in one command, with tools
+  generated from the capability list instead of a hand-maintained second registry.
+- Teams building a quant system in Rust, Go, or Node.js who don't want to stand up a separate
+  Python sidecar just to talk to QMT.
+- Anyone who wants a stable JSON contract instead of re-guessing `xtquant` parameter and field
+  changes every time the broker ships a QMT update.
+- CI pipelines that need to run tests on a machine without QMT installed at all — the test suite
+  fakes `xtquant`, so no broker install is required.
 
 ## Quick Demo
 
@@ -60,8 +78,11 @@ If a request includes `id`, the response echoes it.
 ## Why
 
 QMT bundles `xtquant` inside the broker client install. That is fine for direct Python scripts on a
-trading machine, but awkward for agents and process-based automation. `qmtcli` keeps the QMT
-integration local and gives callers a simple JSON contract:
+trading machine, but awkward for agents and process-based automation — you inherit whatever
+`numpy`/`pandas` version QMT ships, and a silent broker-side upgrade can quietly change how a
+DataFrame serializes or drop a field you were relying on. `qmtcli` keeps that instability local, in
+a subprocess you can restart at will, and gives callers a simple, testable, version-stable JSON
+contract instead:
 
 - `capabilities`, `schema`, and `examples` for discovery;
 - `rpc` for one request over stdin/stdout;
@@ -498,3 +519,9 @@ For coding agents, see [`AGENTS.md`](AGENTS.md).
 
 PyPI packaging metadata is present so the name/build shape is reserved for future publishing, but
 this project is not published by this repository workflow.
+
+## Feedback
+
+If `qmtcli` saved you the trouble of integrating QMT yourself, a star is the most direct way to
+help others find it. Hit a rough edge, missing command, or an agent framework it doesn't fit
+smoothly — open an issue or send a PR.
