@@ -8,6 +8,10 @@
 
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
+- **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，下单有护栏。
+- **适合谁**：想把行情、账户、交易能力接进自己的脚本或 Agent，又不想再啃 xtquant 的人。
+- **不适合谁**：不碰 A 股程序化交易，或者只需要一个现成看盘软件的人。
+
 **现状**：60+ 条 CLI 子命令；对照官方
 [xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) 文档逐条核对 43 个函数（见
 [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)）、对照
@@ -502,6 +506,12 @@ python scripts/check_doc_drift.py
 给代码 Agent 的项目说明见 [`AGENTS.md`](AGENTS.md)。
 
 当前仓库保留了 PyPI 打包元数据，但不在当前工作流中发布。
+
+## 同生态项目
+
+- [opencli-admin](https://github.com/2233admin/opencli-admin) — 自托管的研究与情报流水线
+- [OhMyOpenCLI](https://github.com/2233admin/OhMyOpenCLI) — OpenCLI 适配器生态，补数据缺口
+- [geo-xi](https://github.com/2233admin/geo-xi) — 本地内容可见性追踪，数据不出门
 
 ## 反馈
 
