@@ -39,6 +39,12 @@ packages = ["src/qmtcli"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/qmtcli/xtdata_fields.json" = "qmtcli/xtdata_fields.json"
 
+[tool.uv]
+# GHSA (CVE-2026): cryptography <50.0.0 has a Bleichenbacher-oracle timing
+# side channel in PKCS#7 EnvelopedData decryption. Transitive via pyjwt[crypto];
+# qmtcli/pyjwt never touch PKCS#7 envelopes, but pin the floor anyway.
+override-dependencies = ["cryptography>=50.0.0"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
