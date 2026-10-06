@@ -1,0 +1,31 @@
+name: Task or enhancement · 任务/改进
+description: Propose one change that can be accepted on its own. 一张票对应一个可独立验收的改动。
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal · 目标
+      description: The outcome, and why it matters now.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria · 验收标准
+      description: Observable checks that prove the work is done, one per line.
+      value: |
+        - [ ] 
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals · 非目标
+  - type: textarea
+    id: context
+    attributes:
+      label: Context · 背景
+      description: Related issues, PRs, OpenSpec changes, decision records, or code paths.

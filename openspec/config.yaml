@@ -1,0 +1,9 @@
+schema: spec-driven
+
+context: |
+  Python 3.11+ stdlib-only CLI managed with uv; the broker QMT client and its xtquant SDK are local, user-installed, and never vendored or downloaded.
+  Trading safety invariant: buy/sell keep positive-price and positive multiple-of-100 A-share volume validation, data-call/trade-call keep blocking `_`-prefixed methods, and MCP mode never exposes buy, sell, cancel, or trade-call.
+  Tests fake `xtquant` modules and never place a real order or require a running QMT.
+  `server` stays stdin/stdout JSONL with no network listener; the `{ok, data|error, id}` envelope (qmtcli.agent.v1) is a stable contract.
+  AGENT_CAPABILITIES in src/qmtcli/cli.py is the single command registry; MCP tools and schema output derive from it.
+  Verify with `uv run --extra dev pytest -q` and `uv run --extra dev ruff check .`.

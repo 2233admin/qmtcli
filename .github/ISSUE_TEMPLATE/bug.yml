@@ -1,0 +1,50 @@
+name: Bug report · 缺陷
+description: Report broken behaviour you can reproduce. 报告可复现的错误行为。
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove tokens, cookies, account data, private paths, and proprietary content before submitting.
+        提交前删除 token、cookie、账户数据、私有路径和专有内容。
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary · 摘要
+      description: What broke, and where.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction · 复现步骤
+      description: The smallest command sequence or steps that show the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected · 预期
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual · 实际
+      description: Error output, exit code, or observed behaviour.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment · 环境
+      description: OS, runtime versions, and the commit or release you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence · 证据
+      description: Redacted logs, receipts, or links.
