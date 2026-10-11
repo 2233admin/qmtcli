@@ -7,12 +7,15 @@ tests exercise that shape directly instead of only the dataclass/`__dict__` fall
 
 from __future__ import annotations
 
+import io
 import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from qmtcli.cli import _json_default
+from qmtcli.cli import _emit, _json_default, _print_json, _rpc, _server
+from qmtcli.gateway import QMTGateway
 
 
 def _dump(value):
@@ -125,3 +128,41 @@ def test_xtquant_pyd_object_without_dict_scrapes_public_attributes():
     out = _dump([FakeAccountInfo()])
 
     assert out == [{"account_id": "123456", "account_type": 2}]
+
+
+@pytest.mark.parametrize("emit", [_emit, _print_json])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ([12.5, float("nan"), None], [12.5, None, None]),
+        ((12.5, float("nan"), None), [12.5, None, None]),
+        (np.array([12.5, float("nan")]), [12.5, None]),
+        (np.array(float("nan")), None),
+        (np.float32("nan"), None),
+    ],
+)
+def test_json_output_normalizes_missing_values_for_strict_consumers(emit, value, expected, capsys):
+    emit({"sample": value})
+    raw = capsys.readouterr().out
+
+    def reject_constant(token):
+        raise AssertionError(f"Non-standard JSON constant: {token}")
+
+    output = json.loads(raw, parse_constant=reject_constant)
+    assert output == {"sample": expected}
+
+
+@pytest.mark.parametrize("transport", [_rpc, _server])
+def test_rpc_transports_emit_null_for_missing_quotes(transport, monkeypatch, capsys):
+    monkeypatch.setattr(
+        QMTGateway, "call_data", lambda *args, **kwargs: {"600519.SH": {"lastPrice": float("nan")}}
+    )
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO('{"command":"full-tick","symbols":["600519.SH"]}\n')
+    )
+
+    assert transport() == 0
+    assert json.loads(capsys.readouterr().out, parse_constant=lambda token: pytest.fail(token)) == {
+        "ok": True,
+        "data": {"600519.SH": {"lastPrice": None}},
+    }

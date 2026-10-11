@@ -31,7 +31,7 @@ def _scrub(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         return {key: _scrub(item) for key, item in obj.items()}
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [_scrub(item) for item in obj]
     if _pd is not None and (obj is _pd.NaT or obj is _pd.NA):
         return None
@@ -54,23 +54,25 @@ def _json_default(value: Any) -> Any:
     if _pd is not None and isinstance(value, _pd.Timestamp):
         return value.isoformat()
     if _np is not None and isinstance(value, _np.ndarray):
-        return value.tolist()
+        return _scrub(value.tolist())
     if _np is not None and isinstance(value, _np.generic):
-        return value.item()
+        return _scrub(value.item())
     if is_dataclass(value):
-        return asdict(value)
+        return _scrub(asdict(value))
     if hasattr(value, "__dict__"):
-        return value.__dict__
+        return _scrub(value.__dict__)
     if type(value).__module__.split(".")[0] == "xtquant":
         # xtpythonclient pyd objects (XtAccountInfo, ...) expose plain attributes but
         # have no __dict__; scrape the public, non-callable ones.
-        return {
-            name: attr
-            for name in dir(value)
-            if not name.startswith("_")
-            for attr in [getattr(value, name, None)]
-            if not callable(attr)
-        }
+        return _scrub(
+            {
+                name: attr
+                for name in dir(value)
+                if not name.startswith("_")
+                for attr in [getattr(value, name, None)]
+                if not callable(attr)
+            }
+        )
     return str(value)
 
 
@@ -80,11 +82,11 @@ _print_lock = threading.Lock()
 def _emit(obj: Any) -> None:
     """Thread-safe single-line JSON print used by the server loop and subscription callbacks."""
     with _print_lock:
-        print(json.dumps(obj, ensure_ascii=False, default=_json_default), flush=True)
+        print(json.dumps(_scrub(obj), ensure_ascii=False, default=_json_default), flush=True)
 
 
 def _print_json(value: Any) -> None:
-    print(json.dumps(value, ensure_ascii=False, default=_json_default, indent=2))
+    print(json.dumps(_scrub(value), ensure_ascii=False, default=_json_default, indent=2))
 
 
 _XTDATA_FIELDS_CACHE: dict[str, Any] | None = None
@@ -1970,7 +1972,7 @@ def _handle_watch_command(args: argparse.Namespace) -> int:
 
 def _rpc() -> int:
     request = json.loads((sys.stdin.read() or "{}").lstrip("\ufeff"))
-    print(json.dumps(_handle_rpc_request(request), ensure_ascii=False, default=_json_default, indent=2))
+    _print_json(_handle_rpc_request(request))
     return 0
 
 
