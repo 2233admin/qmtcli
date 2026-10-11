@@ -7,6 +7,10 @@ begin.
 
 ## Unreleased
 
+- Normalize native and numpy missing values to JSON `null` across CLI, RPC, server
+  streams and MCP tool output, including tuple and converted SDK/object payloads.
+  Preserve finite values and pandas index representation.
+
 ## 0.4.0 - 2026-07-07
 
 - Added `qmtcli mcp`: a stdio MCP (Model Context Protocol) server exposing qmtcli commands as MCP

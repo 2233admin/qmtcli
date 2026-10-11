@@ -21,7 +21,7 @@ import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from qmtcli.cli import AGENT_CAPABILITIES, _handle_rpc_request, _json_default
+from qmtcli.cli import AGENT_CAPABILITIES, _handle_rpc_request, _json_default, _scrub
 
 # --- capability -> tool translation -------------------------------------------------------------
 
@@ -148,7 +148,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         request: dict[str, Any] = dict(arguments)
         request["command"] = command
         response = _handle_rpc_request(request)
-    text = json.dumps(response, ensure_ascii=False, default=_json_default)
+    text = json.dumps(_scrub(response), ensure_ascii=False, default=_json_default)
     return [types.TextContent(type="text", text=text)]
 
 
