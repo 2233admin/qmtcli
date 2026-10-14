@@ -7,6 +7,9 @@ begin.
 
 ## Unreleased
 
+- Isolated offline tests from an inherited `QMTCLI_XTDC_TOKEN`; token-specific tests still set
+  their own values, without changing the CLI's environment-variable fallback.
+
 ## 0.4.0 - 2026-07-07
 
 - Added `qmtcli mcp`: a stdio MCP (Model Context Protocol) server exposing qmtcli commands as MCP
