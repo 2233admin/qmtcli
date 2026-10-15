@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import threading
@@ -24,10 +25,12 @@ except ImportError:  # pragma: no cover - exercised only when pandas is absent
 
 
 def _scrub(obj: Any) -> Any:
-    """Recursively replace NaN/NaT/NA leaves with None so json.dumps emits valid JSON null.
+    """Recursively replace non-finite float and NaN/NaT/NA leaves with None so json.dumps emits
+    valid JSON null.
 
-    json's own encoder happily emits the non-standard ``NaN`` token for float('nan') and never
-    calls ``default`` for it, so this has to run before the value reaches json.dumps.
+    json's own encoder happily emits the non-standard ``NaN``/``Infinity``/``-Infinity`` tokens and
+    never calls ``default`` for them, so this has to run before the value reaches json.dumps.
+    Strict consumers (JS JSON.parse, serde_json) reject all three alike.
     """
     if isinstance(obj, dict):
         return {key: _scrub(item) for key, item in obj.items()}
@@ -35,7 +38,7 @@ def _scrub(obj: Any) -> Any:
         return [_scrub(item) for item in obj]
     if _pd is not None and (obj is _pd.NaT or obj is _pd.NA):
         return None
-    if isinstance(obj, float) and obj != obj:  # NaN is the only float unequal to itself
+    if isinstance(obj, float) and not math.isfinite(obj):  # NaN and +/-Infinity
         return None
     return obj
 

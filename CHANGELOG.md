@@ -11,7 +11,9 @@ begin.
   their own values, without changing the CLI's environment-variable fallback.
 - Normalize native and numpy missing values to JSON `null` across CLI, RPC, server
   streams and MCP tool output, including tuple and converted SDK/object payloads.
-  Preserve finite values and pandas index representation.
+  Non-finite floats (`NaN`, `Infinity`, `-Infinity`) become `null` too, since
+  `json.dumps` emits tokens strict consumers reject. Preserve finite values and
+  pandas index representation.
 
 ## 0.4.0 - 2026-07-07
 

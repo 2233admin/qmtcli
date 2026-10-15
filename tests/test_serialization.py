@@ -136,9 +136,12 @@ def test_xtquant_pyd_object_without_dict_scrapes_public_attributes():
     [
         ([12.5, float("nan"), None], [12.5, None, None]),
         ((12.5, float("nan"), None), [12.5, None, None]),
+        ([12.5, float("inf"), float("-inf")], [12.5, None, None]),
+        ({"up": float("inf"), "down": float("-inf")}, {"up": None, "down": None}),
         (np.array([12.5, float("nan")]), [12.5, None]),
         (np.array(float("nan")), None),
         (np.float32("nan"), None),
+        (np.float64(float("inf")), None),
     ],
 )
 def test_json_output_normalizes_missing_values_for_strict_consumers(emit, value, expected, capsys):
