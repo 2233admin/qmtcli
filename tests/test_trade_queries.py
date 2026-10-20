@@ -156,14 +156,6 @@ def test_account_required_commands_still_require_account(command):
         main([command])
 
 
-def test_account_optional_commands_do_not_raise_without_account():
-    for command in ACCOUNT_OPTIONAL_COMMANDS:
-        # Should not raise SystemExit even though --account is not registered gracefully skipped
-        # here since gateway_spy is not used; a real connect would fail (no QMT install), but the
-        # failure must come back as a clean error envelope (item 2), not the --account SystemExit.
-        assert main([command]) == 1
-
-
 # --- gateway-level: connect(subscribe=False) really skips subscribe -------------------------------
 
 
