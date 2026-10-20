@@ -7,6 +7,8 @@ begin.
 
 ## Unreleased
 
+- Updated locked urllib3 to 2.8.0 and certifi to 2026.10.19 for transport security
+  fixes, retaining the unaffected emSign roots in the certificate bundle.
 - Updated locked MCP to 1.30.0 and PyJWT to 2.15.0 for security fixes in the
   optional MCP dependency graph.
 - Updated the locked AnyIO dependency from 4.14.1 to 4.14.2 for security fixes in the
