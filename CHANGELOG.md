@@ -7,6 +7,8 @@ begin.
 
 ## Unreleased
 
+- Updated locked MCP to 1.30.0 and PyJWT to 2.15.0 for security fixes in the
+  optional MCP dependency graph.
 - Updated the locked AnyIO dependency from 4.14.1 to 4.14.2 for security fixes in the
   optional MCP dependency graph.
 - Isolated offline tests from an inherited `QMTCLI_XTDC_TOKEN`; token-specific tests still set
