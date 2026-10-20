@@ -7,6 +7,8 @@ begin.
 
 ## Unreleased
 
+- Updated the locked AnyIO dependency from 4.14.1 to 4.14.2 for security fixes in the
+  optional MCP dependency graph.
 - Isolated offline tests from an inherited `QMTCLI_XTDC_TOKEN`; token-specific tests still set
   their own values, without changing the CLI's environment-variable fallback.
 - Normalize native and numpy missing values to JSON `null` across CLI, RPC, server
