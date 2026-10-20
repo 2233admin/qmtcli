@@ -7,6 +7,14 @@ begin.
 
 ## Unreleased
 
+- Updated the locked AnyIO dependency from 4.14.1 to 4.14.2 for security fixes in the
+  optional MCP dependency graph.
+- Isolated offline tests from an inherited `QMTCLI_XTDC_TOKEN`; token-specific tests still set
+  their own values, without changing the CLI's environment-variable fallback.
+- Normalize native and numpy missing values to JSON `null` across CLI, RPC, server
+  streams and MCP tool output, including tuple and converted SDK/object payloads.
+  Preserve finite values and pandas index representation.
+
 ## 0.4.0 - 2026-07-07
 
 - Added `qmtcli mcp`: a stdio MCP (Model Context Protocol) server exposing qmtcli commands as MCP

@@ -10,6 +10,7 @@ import json
 import sys
 
 import anyio
+import pytest
 
 from qmtcli.cli import AGENT_CAPABILITIES, main
 from qmtcli.gateway import QMTGateway
@@ -106,6 +107,19 @@ def test_call_tool_dispatches_qmt_calendar_through_call_data(monkeypatch):
     payload = json.loads(result[0].text)
     assert payload["ok"] is True
     assert calls == [("get_trading_calendar", ("SH",), {"start_time": "", "end_time": ""})]
+
+
+def test_mcp_quote_output_normalizes_native_missing_price(monkeypatch):
+    monkeypatch.setattr(
+        QMTGateway, "call_data", lambda *args, **kwargs: {"600519.SH": {"lastPrice": float("nan")}}
+    )
+
+    result = anyio.run(call_tool, "qmt_full_tick", {"symbols": ["600519.SH"]})
+
+    assert json.loads(result[0].text, parse_constant=lambda token: pytest.fail(token)) == {
+        "ok": True,
+        "data": {"600519.SH": {"lastPrice": None}},
+    }
 
 
 def test_call_tool_command_argument_cannot_override_dispatch_target(monkeypatch):
