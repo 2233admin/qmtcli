@@ -54,10 +54,10 @@ Send one request per line:
 
 Treat these as requiring explicit user approval in any agent policy:
 
-- `buy` - places an order
-- `sell` - places an order
-- `cancel` - cancels an order
-- `trade_call` - arbitrary public `XtQuantTrader` method
+- `trade_call` - caller-selected `XtQuantTrader` query method (`query_*` / `smt_query_*` only)
+
+qmtcli has no order placement or cancellation. Orders go through a gateway with per-order human
+confirmation, outside this tool.
 
 `data_call` is an escape hatch for public `xtquant.xtdata` methods. It is usually read-only, but
 agents should still inspect the requested method before calling it.

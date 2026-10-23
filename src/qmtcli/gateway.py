@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any
 
 
+# qmtcli never trades: only these XtQuantTrader method families are callable. Orders go through a
+# gateway with per-order human confirmation outside this tool (order_stock, cancel_order_stock,
+# fund_transfer, ... are refused).
+READ_ONLY_TRADER_PREFIXES = ("query_", "smt_query_")
+
 QMT_ROOT_CANDIDATES = (
     Path("D:/DFZQxtqmt_client_real_win64"),
     Path("D:/DFZQxtqmt_client_test_win64"),
@@ -328,37 +333,14 @@ class QMTGateway:
         else:
             trader = self._require_trader()
             account = None
+        if not method.startswith(READ_ONLY_TRADER_PREFIXES):
+            raise ValueError(
+                f"XtQuantTrader method {method!r} refused: qmtcli is read-only, only "
+                f"{'/'.join(p + '*' for p in READ_ONLY_TRADER_PREFIXES)} methods are allowed"
+            )
         fn = getattr(trader, method, None)
-        if fn is None or method.startswith("_"):
+        if fn is None:
             raise ValueError(f"unknown XtQuantTrader method: {method}")
         if with_account:
             return fn(account, *args, **kwargs)
         return fn(*args, **kwargs)
-
-    def cancel_order(self, order_id: int | str) -> Any:
-        trader, account = self._require_connected()
-        return trader.cancel_order_stock(account, int(order_id))
-
-    def submit_order(self, symbol: str, side: str, volume: int, price: float) -> Any:
-        trader, account = self._require_connected()
-        if volume <= 0 or volume % 100 != 0:
-            raise ValueError("A-share order volume must be a positive multiple of 100")
-        if price <= 0:
-            raise ValueError("price must be positive")
-
-        side = side.upper()
-        if side not in {"BUY", "SELL"}:
-            raise ValueError("side must be BUY or SELL")
-
-        constants = self.xtconstant
-        order_type = constants.STOCK_BUY if side == "BUY" else constants.STOCK_SELL
-        return trader.order_stock(
-            account,
-            symbol,
-            order_type,
-            volume,
-            constants.FIX_PRICE,
-            price,
-            "qmtcli",
-            "qmtcli",
-        )

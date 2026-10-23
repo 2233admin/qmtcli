@@ -6,17 +6,17 @@ Checked: 2026-07-07, against `xtquant` 250516.1.1.
 
 This table maps every function documented on the xttrader doc page to its `qmtcli` CLI surface.
 Where a function is not exposed as a named command, it can still be called through the generic
-`trade-call` (read/query or mutating) escape hatch, at the caller's own risk — no argument
-validation beyond blocking private (`_`-prefixed) method names.
+`trade-call` escape hatch — but only query methods (`query_*` / `smt_query_*`). qmtcli is read-only:
+every order, cancel, and fund-transfer method is refused, listed below as "refused".
 
 | XtQuantTrader function | doc section (Chinese) | CLI command | notes |
 | --- | --- | --- | --- |
 | `XtQuantTrader`, `register_callback`, `start`, `connect`, `stop`, `run_forever`, `set_relaxed_response_order_enabled` | 创建API实例 / 注册回调类 / 准备API环境 / 创建连接 / 停止运行 / 阻塞当前线程进入等待状态 / 开启主动请求接口的专用线程 | not exposed | internal gateway lifecycle; `QMTGateway.connect()` creates the `XtQuantTrader` instance and calls `start()`/`connect()` itself, once per CLI invocation |
 | `subscribe`, `unsubscribe` | 订阅账号信息 / 反订阅账号信息 | internal, auto on connect | `QMTGateway.connect()` calls `trader.subscribe(account)` automatically whenever an account id is present (skipped for the account-less queries below); not a standalone command |
-| `order_stock` | 股票同步报单 | `buy` / `sell` | fixed-price A-share orders |
-| `order_stock_async`, `cancel_order_stock_async`, `cancel_order_stock_sysid`, `cancel_order_stock_sysid_async` | 股票异步报单 / 股票异步撤单 / 股票同步撤单（按 sysid） / 股票异步撤单（按 sysid） | `trade-call` | escape hatch only; the async variants are unsuitable for a one-shot CLI process, and the sysid-keyed cancel is an alternate identifier scheme not wired to the named `cancel` command |
-| `cancel_order_stock` | 股票同步撤单 | `cancel` | |
-| `fund_transfer`, `sync_transaction_from_external`, `smt_negotiate_order_async` | 资金划拨 / 外部交易数据录入 / 库存券约券申请 | `trade-call` | mutating; at the caller's own risk, no extra validation beyond blocking `_`-prefixed names |
+| `order_stock` | 股票同步报单 | refused | qmtcli never places orders |
+| `order_stock_async`, `cancel_order_stock_async`, `cancel_order_stock_sysid`, `cancel_order_stock_sysid_async` | 股票异步报单 / 股票异步撤单 / 股票同步撤单（按 sysid） / 股票异步撤单（按 sysid） | refused | qmtcli never places or cancels orders |
+| `cancel_order_stock` | 股票同步撤单 | refused | qmtcli never cancels orders |
+| `fund_transfer`, `sync_transaction_from_external`, `smt_negotiate_order_async` | 资金划拨 / 外部交易数据录入 / 库存券约券申请 | refused | mutating; not a query method |
 | `query_stock_asset` | 资产查询 | `asset` | |
 | `query_stock_orders` | 委托查询 | `orders` (`--cancelable-only`) | `cancelable_only` defaults to false, matching the SDK default |
 | `query_stock_trades` | 成交查询 | `trades` | |
@@ -33,7 +33,7 @@ validation beyond blocking private (`_`-prefixed) method names.
 | `query_account_status` | 账号状态查询 | `account-status` | connects to QMT session; no account id needed — the method itself takes no account argument |
 | `query_com_fund` | 普通柜台资金查询 | `com-fund` | |
 | `query_com_position` | 普通柜台持仓查询 | `com-position` | |
-| `export_data`, `query_data` | 通用数据导出 / 通用数据查询 | `trade-call` | generic export/query surface; not individually wired to a named command |
+| `export_data`, `query_data` | 通用数据导出 / 通用数据查询 | `trade-call` (`query_data` only) | `export_data` writes files and is refused; `query_data` is reachable as a query method |
 | `smt_query_quoter`, `smt_query_compact` | 券源行情查询 / 约券合约查询 | `trade-call` | read-only securities-lending (约券) queries; documented on the doc page but not independently wired to a named command in this wave |
 | `on_disconnected`, `on_account_status`, `on_stock_order`, `on_stock_trade`, `on_order_error`, `on_cancel_error`, `on_order_stock_async_response`, `on_smt_appointment_async_response` | 连接状态回调 / 账号状态信息推送 / 委托信息推送 / 成交信息推送 / 下单失败信息推送 / 撤单失败信息推送 / 异步下单回报推送 / 约券相关异步接口的回报推送 | not exposed | trader push callbacks delivered through `register_callback`; server mode's streaming support (`subscribe`/`subscribe_whole`/`unsubscribe`) covers `xtdata` quote subscriptions only, not these `XtQuantTrader` callbacks |
 

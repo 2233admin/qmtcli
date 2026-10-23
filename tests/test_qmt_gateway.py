@@ -67,14 +67,6 @@ def test_qmt_gateway_queries_with_fake_xtquant(monkeypatch):
         def query_stock_trades(self, account):
             return [{"order_id": 123, "stock_code": "600519.SH"}]
 
-        def cancel_order_stock(self, account, order_id):
-            calls.append(("cancel", order_id))
-            return 0
-
-        def order_stock(self, account, symbol, order_type, volume, price_type, price, strategy, remark):
-            calls.append(("order", symbol, order_type, volume, price_type, price, strategy, remark))
-            return "ORDER123"
-
     class FakeAccount:
         def __init__(self, account_id, account_type):
             self.account_id = account_id
@@ -108,19 +100,6 @@ def test_qmt_gateway_queries_with_fake_xtquant(monkeypatch):
         ("start",),
         ("connect",),
     ]
-    assert gateway.submit_order("600519.SH", "BUY", 100, 1500.0) == "ORDER123"
-    assert calls[-1] == (
-        "order",
-        "600519.SH",
-        23,
-        100,
-        11,
-        1500.0,
-            "qmtcli",
-        "qmtcli",
-    )
-    assert gateway.cancel_order("123") == 0
-    assert calls[-1] == ("cancel", 123)
 
 
 def test_qmt_doctor_reports_read_only_sdk_support(monkeypatch, capsys):
@@ -164,15 +143,6 @@ def test_qmt_doctor_reports_install_hint_when_sdk_missing(monkeypatch):
     assert report["diagnosis"]["severity"] == "error"
     assert report["diagnosis"]["auto_download"] is False
     assert "does not auto-download" in report["diagnosis"]["fix_hint"]
-
-
-def test_qmt_order_validation_without_real_submit():
-    gateway = QMTGateway(QMTConnection("C:/qmt/userdata_mini", "123456"))
-    gateway.trader = object()
-    gateway.account = object()
-
-    with pytest.raises(ValueError, match="multiple of 100"):
-        gateway.submit_order("600519.SH", "BUY", 50, 100.0)
 
 
 def test_qmt_rpc_status(monkeypatch, capsys):
