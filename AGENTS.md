@@ -42,8 +42,10 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - Do not store credentials or account secrets.
 - Do not auto-download, vendor, or install broker QMT.
 - Do not place real orders in tests.
-- Keep `data-call` and `trade-call` blocking `_`-prefixed methods.
-- Keep order validation: positive price and positive A-share volume multiple of 100.
+- qmtcli is read-only: do not add order placement, cancellation, or fund transfer (no `buy`/`sell`/
+  `cancel`). Orders go through a gateway with per-order human confirmation outside this tool.
+- Keep `data-call` blocking `_`-prefixed methods and `trade-call` limited to `query_*` /
+  `smt_query_*` (`READ_ONLY_TRADER_PREFIXES` in `gateway.py`).
 - Keep `server` as stdin/stdout JSONL, not TCP/HTTP.
 
 ## Common Agent Tasks

@@ -8,7 +8,7 @@
 
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
-- **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，下单有护栏。
+- **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，不下单。
 - **适合谁**：想把行情、账户、交易能力接进自己的脚本或 Agent，又不想再啃 xtquant 的人。
 - **不适合谁**：不碰 A 股程序化交易，或者只需要一个现成看盘软件的人。
 
@@ -38,7 +38,7 @@ QMT 自带的那份，见[安装](#安装)）。使用前需要先在本机安�
 
 ## 适合谁
 
-- 想让 LLM Agent（Claude、GPT、本地模型）直接查行情、看持仓、下单的人——`qmtcli ` 一条
+- 想让 LLM Agent（Claude、GPT、本地模型）直接查行情、看持仓的人——`qmtcli ` 一条
   命令接进 ，工具从能力清单自动生成，不用手写第二套注册表。
 - 想用 Rust、Go、Node.js 写量化系统，又不想专门为了调 QMT 起一个 Python 服务的人。
 - 想要一份稳定的 JSON 链接，而不是每次券商升级 QMT 就得重新猜 `xtquant` 参数和字段变化的人。
@@ -91,7 +91,7 @@ QMT 把 `xtquant` 放在券商客户端安装目录里。直接在交易机上�
 - `capabilities`、`schema`、`examples` 用于能力发现；
 - `rpc` 用于 stdin/stdout 单请求；
 - `server` 用于逐行 JSON 请求；
-- 对只读调用、escape hatch、下单、撤单做明确标记；
+- 对只读调用、escape hatch 做明确标记；
 - 测试里 fake `xtquant`，CI 不需要真实券商环境。
 
 只要一个运行时能启动本地进程并交换 JSON，就能使用它——Python、Rust、Go、Node.js、Shell 脚本，
@@ -121,9 +121,9 @@ QMT 把 `xtquant` 放在券商客户端安装目录里。直接在交易机上�
 - 账户查询：资产、持仓、委托（支持 `--cancelable-only`）、成交。
 - 交易查询命令：持仓统计、信用/融资融券查询、新股额度与数据、账号信息/状态、普通柜台资金/持仓
   查询——见[交易查询命令](#交易查询命令)。
-- 固定价 A 股 `buy`、`sell`、`cancel`。
+- **只读**：`qmtcli` 不下单、不撤单、不划资金。下单走带逐笔人工确认的网关，不在这个工具里。
 - `data-call` 调用公开的 `xtquant.xtdata` 方法。
-- `trade-call` 调用公开的 `XtQuantTrader` 方法。
+- `trade-call` 调用 `XtQuantTrader` 的查询方法（`query_*` / `smt_query_*`）。
 - 可选的独立 xtdatacenter（xtdc）数据模式，通过 `--xtdc-token` 开启（实验性）——见
   [独立数据模式](#独立数据模式xtdc实验性)。
 - Agent / 脚本协议命令：`capabilities`、`schema`、`examples`、`rpc`、`server`。
@@ -264,8 +264,8 @@ claude mcp add qmt -- uv run --directory D:/projects/qmtcli --extra mcp qmtcli m
 `qmt_account_infos`。这里没有像 CLI 那样常驻的 `--account`/`--path`——每个交易查询/账户类工具
 都在每次调用时接受可选的 `path`/`account`/`account_type` 参数。
 
-以下按设计被排除：`buy`、`sell`、`cancel`（下单/撤单）和 `trade_call`（直接暴露完整
-`XtQuantTrader` 方法面的非受控 escape hatch）——需要下单交易请直接使用 CLI。`watch` 以及
+以下按设计被排除：`trade_call`（由调用方任选 `XtQuantTrader` 查询方法的 escape hatch，
+具名查询已覆盖 Agent 的用途）。`watch` 以及
 `subscribe`/`subscribe_whole`/`unsubscribe` 三件套也被排除（分别是仅 CLI、仅 server 的流式推送，
 不适合一次性的工具调用）。其余的——`status`、`doctor`、`data_call`、`fields`、`download`、所有
 行情命令，以及所有交易查询（`asset`、`positions`、`orders`、`trades` 等）——都可以使用。
@@ -377,9 +377,6 @@ qmtcli --account ACCOUNT_ID positions
 qmtcli --account ACCOUNT_ID orders
 qmtcli --account ACCOUNT_ID orders --cancelable-only
 qmtcli --account ACCOUNT_ID trades
-qmtcli --account ACCOUNT_ID buy 600519.SH 100 1500.00
-qmtcli --account ACCOUNT_ID sell 600519.SH 100 1500.00
-qmtcli --account ACCOUNT_ID cancel ORDER_ID
 ```
 
 ## 交易查询命令
@@ -417,13 +414,14 @@ qmtcli data-call get_stock_list_in_sector --args "[\"沪深A股\"]"
 qmtcli data-call get_cb_info --args "[\"123001.SZ\"]"
 ```
 
-`trade-call` 在连接账户后调用公开的 `XtQuantTrader` 方法。默认会把 `StockAccount` 对象
+`trade-call` 在连接账户后调用 `XtQuantTrader` 的查询方法，只放行 `query_*` 和 `smt_query_*`；
+`order_stock`、`cancel_order_stock`、`fund_transfer` 等会改变账户的方法一律拒绝。默认会把 `StockAccount` 对象
 放在位置参数最前面：
 
 ```powershell
 qmtcli --account ACCOUNT_ID trade-call query_stock_orders
-qmtcli --account ACCOUNT_ID trade-call some_method --args "[1,2]" --kwargs "{\"flag\":true}"
-qmtcli --account ACCOUNT_ID trade-call method_without_account --no-account
+qmtcli --account ACCOUNT_ID trade-call query_stock_order --args "[12345]"
+qmtcli --account ACCOUNT_ID trade-call query_account_infos --no-account
 ```
 
 `_` 开头的私有方法名会被阻止。
@@ -451,7 +449,7 @@ xtdatacenter 调用上。`qmtcli doctor` 会用 `xtdc_available` 字段报告 `x
 ```json
 {"command":"status"}
 {"command":"data_call","method":"get_stock_list_in_sector","args":["沪深A股"]}
-{"command":"buy","account":"ACCOUNT_ID","symbol":"600519.SH","volume":100,"price":1500.0}
+{"command":"positions","account":"ACCOUNT_ID"}
 ```
 
 `server` 模式下一行输入对应一行输出。请求里的 `id` 会被带回。
@@ -461,11 +459,9 @@ xtdatacenter 调用上。`qmtcli doctor` 会用 `xtdc_available` 字段报告 `x
 - 本地使用：`server` 只读 stdin、写 stdout，不打开 socket。
 - 不下载或自动安装券商软件。
 - 不保存账号密码或登录凭据。
-- 不自动重试下单。
-- `capabilities` 会标记下单和撤单能力为危险动作；`download` 因为写入本地 QMT 缓存，被标记为
+- 不下单、不撤单、不划资金：没有 `buy`/`sell`/`cancel`，`trade-call` 只放行查询方法。
+- `capabilities` 中 `download` 因为写入本地 QMT 缓存，被标记为
   `downloads_data`；`sector` 因为创建/修改本地自定义板块，被标记为 `mutates_local_data`。
-- A 股委托数量必须是正的 100 倍数。
-- 委托价格必须大于 0。
 - 阻止调用 `_` 开头的 `xtdata` / `XtQuantTrader` 方法。
 - 账户权限、风控检查和最终成交仍由 QMT 和券商控制。
 

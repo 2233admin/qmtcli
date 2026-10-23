@@ -24,9 +24,6 @@ def _spec_names() -> set[str]:
 def test_build_tool_specs_excludes_dangerous_and_unreachable_commands():
     names = _spec_names()
     for excluded in (
-        "qmt_buy",
-        "qmt_sell",
-        "qmt_cancel",
         "qmt_trade_call",
         "qmt_subscribe",
         "qmt_subscribe_whole",
@@ -74,12 +71,9 @@ def test_build_tool_specs_count_matches_capabilities_minus_exclusions():
     """No magic number: independently recompute the exclusion predicate from AGENT_CAPABILITIES
     itself and check build_tool_specs() agrees, so this test tracks the capability list as it
     grows instead of hard-coding today's count."""
-    excluded_dangers = {"places_order", "cancels_order"}
     excluded_names = {"trade_call", "rpc", "server", "mcp"}
 
     def is_excluded(command: dict) -> bool:
-        if command.get("danger") in excluded_dangers:
-            return True
         if command["name"] in excluded_names:
             return True
         transports = command.get("transports")
@@ -125,13 +119,13 @@ def test_mcp_quote_output_normalizes_native_missing_price(monkeypatch):
 def test_call_tool_command_argument_cannot_override_dispatch_target(monkeypatch):
     """A caller-supplied "command" argument must never win over the resolved dispatch target --
     otherwise any exposed tool (even the read-only qmt_status) could be hijacked into reaching an
-    excluded command such as buy/sell/cancel/trade_call/subscribe through its arguments."""
+    excluded command such as trade_call/subscribe through its arguments."""
     monkeypatch.setattr(QMTGateway, "is_available", lambda path=None: True)
 
     result = anyio.run(
         call_tool,
         "qmt_status",
-        {"command": "buy", "symbol": "600519.SH", "volume": 100, "price": 1.0},
+        {"command": "trade_call", "method": "query_stock_asset"},
     )
 
     payload = json.loads(result[0].text)

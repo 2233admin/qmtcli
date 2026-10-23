@@ -24,7 +24,7 @@ handling NaN, and guessing which field encoding to trust are your problem too.
 
 `qmtcli` exists to do that work once: it starts a small local process, takes JSON in, hands JSON
 back, and talks to the QMT client you already have logged in. Everything the official QMT/XtQuant
-API exposes — diagnostics, market data, account queries, and guarded stock order placement (see the
+API exposes — diagnostics, market data, and account queries (see the
 official [QMT beginner guide](https://dict.thinktrader.net/freshman/rookie.html)) — is reachable
 through this one stable stdin/stdout JSON contract.
 
@@ -37,8 +37,8 @@ copy, see [Install](#install)). QMT must already be installed and logged in loca
 
 ## Who This Is For
 
-- Anyone who wants an LLM agent (Claude, GPT, a local model) to check quotes, read positions, or
-  place guarded orders directly — `qmtcli mcp` wires it into MCP in one command, with tools
+- Anyone who wants an LLM agent (Claude, GPT, a local model) to check quotes or read positions
+  directly — `qmtcli mcp` wires it into MCP in one command, with tools
   generated from the capability list instead of a hand-maintained second registry.
 - Teams building a quant system in Rust, Go, or Node.js who don't want to stand up a separate
   Python sidecar just to talk to QMT.
@@ -95,7 +95,7 @@ contract instead:
 - `capabilities`, `schema`, and `examples` for discovery;
 - `rpc` for one request over stdin/stdout;
 - `server` for newline-delimited JSON requests;
-- explicit labels for read-only calls, escape hatches, order placement, and cancellation;
+- explicit labels for read-only calls and escape hatches;
 - tests that fake `xtquant`, so CI does not need a broker install.
 
 Any runtime that can start a local process and exchange JSON can use it — Python, Rust, Go,
@@ -127,9 +127,10 @@ Node.js, shell scripts, or an LLM agent, no language-specific SDK or binding req
 - Trader query commands: position statistics, credit/margin queries, IPO quota and data, account
   infos/status, and ordinary-account fund/position queries — see
   [Trade Query Commands](#trade-query-commands).
-- Fixed-price A-share `buy`, `sell`, and `cancel`.
+- **Read-only**: `qmtcli` never places or cancels orders or moves funds. Orders go through a gateway
+  with per-order human confirmation, outside this tool.
 - Generic `data-call` for public `xtquant.xtdata` methods.
-- Generic `trade-call` for public `XtQuantTrader` methods.
+- Generic `trade-call` for `XtQuantTrader` query methods (`query_*` / `smt_query_*`).
 - Optional standalone xtdatacenter (xtdc) data mode via `--xtdc-token` (experimental) — see
   [Standalone Data Mode](#standalone-data-mode-xtdc-experimental).
 - Agent/script protocol commands: `capabilities`, `schema`, `examples`, `rpc`, `server`.
@@ -276,9 +277,8 @@ Tool names are `qmt_<name>` with dashes replaced by underscores, for example `qm
 CLI has — every trade-query/account tool takes optional `path`/`account`/`account_type`
 arguments per call instead.
 
-Excluded by design: `buy`, `sell`, `cancel` (order placement/cancellation) and `trade_call` (an
-unguarded escape hatch onto the full `XtQuantTrader` surface) — use the CLI directly for guarded
-trading. `watch` and the `subscribe`/`subscribe_whole`/`unsubscribe` trio are also excluded (CLI-
+Excluded by design: `trade_call` (an escape hatch onto caller-selected `XtQuantTrader` query
+methods; the named queries cover agent use). `watch` and the `subscribe`/`subscribe_whole`/`unsubscribe` trio are also excluded (CLI-
 only / server-only streaming, not a fit for one-shot tool calls). Everything else — `status`,
 `doctor`, `data_call`, `fields`, `download`, every named data command, and every trade query
 (`asset`, `positions`, `orders`, `trades`, ...) — is available.
@@ -383,7 +383,7 @@ qmtcli sector reset MySector 600519.SH
 qmtcli sector remove MySector
 ```
 
-Account and order commands require `--account`:
+Account commands require `--account`:
 
 ```powershell
 qmtcli --account ACCOUNT_ID asset
@@ -391,9 +391,6 @@ qmtcli --account ACCOUNT_ID positions
 qmtcli --account ACCOUNT_ID orders
 qmtcli --account ACCOUNT_ID orders --cancelable-only
 qmtcli --account ACCOUNT_ID trades
-qmtcli --account ACCOUNT_ID buy 600519.SH 100 1500.00
-qmtcli --account ACCOUNT_ID sell 600519.SH 100 1500.00
-qmtcli --account ACCOUNT_ID cancel ORDER_ID
 ```
 
 ## Trade Query Commands
@@ -433,13 +430,15 @@ qmtcli data-call get_stock_list_in_sector --args "[\"沪深A股\"]"
 qmtcli data-call get_cb_info --args "[\"123001.SZ\"]"
 ```
 
-`trade-call` calls any public method on `XtQuantTrader` after connecting the account. By default,
+`trade-call` calls an `XtQuantTrader` query method after connecting the account; only `query_*` and
+`smt_query_*` are allowed, and account-changing methods such as `order_stock`,
+`cancel_order_stock`, and `fund_transfer` are refused. By default,
 the `StockAccount` object is prepended to positional arguments:
 
 ```powershell
 qmtcli --account ACCOUNT_ID trade-call query_stock_orders
-qmtcli --account ACCOUNT_ID trade-call some_method --args "[1,2]" --kwargs "{\"flag\":true}"
-qmtcli --account ACCOUNT_ID trade-call method_without_account --no-account
+qmtcli --account ACCOUNT_ID trade-call query_stock_order --args "[12345]"
+qmtcli --account ACCOUNT_ID trade-call query_account_infos --no-account
 ```
 
 Private method names beginning with `_` are blocked.
@@ -469,7 +468,7 @@ yet wired to a specific xtdatacenter call. `qmtcli doctor` reports whether the
 ```json
 {"command":"status"}
 {"command":"data_call","method":"get_stock_list_in_sector","args":["沪深A股"]}
-{"command":"buy","account":"ACCOUNT_ID","symbol":"600519.SH","volume":100,"price":1500.0}
+{"command":"positions","account":"ACCOUNT_ID"}
 ```
 
 For JSONL `server`, one input line produces one output line. Request `id` is echoed.
@@ -479,12 +478,11 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 - Local only: `server` reads stdin and writes stdout; it does not open a socket.
 - No broker software download or auto-install.
 - No credential storage.
-- No order retry loop.
-- `capabilities` marks order placement and cancel actions as dangerous, marks `download` as
+- No order placement, cancellation, or fund transfer: there is no `buy`/`sell`/`cancel`, and
+  `trade-call` only allows query methods.
+- `capabilities` marks `download` as
   `downloads_data` since it writes into the local QMT cache, and marks `sector` as
   `mutates_local_data` since it creates/modifies local custom sector definitions.
-- A-share order volume must be a positive multiple of 100.
-- Order price must be positive.
 - Private `xtdata` / `XtQuantTrader` method names are blocked.
 - QMT account permissions, risk checks, and final execution remain controlled by QMT and the broker.
 

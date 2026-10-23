@@ -25,13 +25,8 @@ from qmtcli.cli import AGENT_CAPABILITIES, _handle_rpc_request, _json_default, _
 
 # --- capability -> tool translation -------------------------------------------------------------
 
-# Danger levels that must never be reachable over MCP: qmtcli-over-MCP stays a read + guarded
-# escape-hatch surface for agents; order placement/cancellation remain CLI/rpc/server only.
-_EXCLUDED_DANGERS = {"places_order", "cancels_order"}
-
-# trade_call is an unguarded escape hatch onto the *entire* XtQuantTrader surface (which includes
-# order placement/cancellation under other method names), so it is excluded by name even though
-# its own "danger" is "escape_hatch" rather than places_order/cancels_order. data_call is the
+# trade_call is an escape hatch onto caller-selected XtQuantTrader query methods, so it stays
+# excluded by name; the named trade queries cover the agent use cases. data_call is the
 # read-only xtdata equivalent and stays included. "rpc"/"server"/"mcp" are defensive: none of them
 # are AGENT_CAPABILITIES commands today except "mcp" itself (added below), but excluding all three
 # by name means adding a future meta-command with one of these names can never accidentally turn
@@ -57,8 +52,6 @@ def _dispatch_command(command: dict[str, Any]) -> str:
 
 
 def _is_excluded(command: dict[str, Any]) -> bool:
-    if command.get("danger") in _EXCLUDED_DANGERS:
-        return True
     if command["name"] in _EXCLUDED_NAMES:
         return True
     # Anything restricted to a transport list that excludes "rpc" cannot be reached through
@@ -97,8 +90,7 @@ def _input_schema(command: dict[str, Any]) -> dict[str, Any]:
 def build_tool_specs() -> list[dict[str, Any]]:
     """Generate MCP tool specs from AGENT_CAPABILITIES -- the single source of truth.
 
-    Excludes order placement/cancellation (danger places_order/cancels_order), trade_call (an
-    unguarded escape hatch onto the full XtQuantTrader surface), and anything not reachable
+    Excludes trade_call (an escape hatch onto caller-selected XtQuantTrader query methods), and anything not reachable
     through the rpc transport (the subscribe trio, server-only; watch, CLI-only). Everything else
     -- status, doctor, data_call, fields, download, every named data command, and every trade
     query including asset/positions/orders/trades -- is included.
@@ -141,8 +133,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     else:
         # Merge arguments *under* the resolved command, not {"command": command, **arguments}:
         # if a caller's arguments happened to include a "command" key, spreading arguments last
-        # would let it silently override the dispatch target and reach an excluded command (buy,
-        # sell, cancel, trade_call, subscribe, ...) through an innocuous-looking tool. Building the
+        # would let it silently override the dispatch target and reach an excluded command
+        # (trade_call, subscribe, ...) through an innocuous-looking tool. Building the
         # request from arguments first and setting "command" last keeps the resolved command
         # authoritative no matter what the caller sends.
         request: dict[str, Any] = dict(arguments)

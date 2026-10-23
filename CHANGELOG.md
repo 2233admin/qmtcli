@@ -7,6 +7,10 @@ begin.
 
 ## Unreleased
 
+- **Breaking:** qmtcli is now read-only. Removed `buy`, `sell`, and `cancel` from the CLI, `rpc`,
+  `server`, and `capabilities`, and `trade-call` now only accepts `query_*` / `smt_query_*`
+  methods. An agent could place an order through these without per-order approval; orders now go
+  through a gateway with per-order human confirmation outside this tool.
 - Removed a host-dependent offline test that could discover a real QMT SDK and
   initialize its trader; deterministic fake-SDK and error-envelope coverage remains.
 - Updated locked urllib3 to 2.8.0 and certifi to 2026.10.19 for transport security

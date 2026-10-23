@@ -122,6 +122,10 @@ def _dispatch_fields_command(kind: str | None) -> Any:
 
 AGENT_CAPABILITIES: dict[str, Any] = {
     "protocol": "qmtcli.agent.v1",
+    "orders": (
+        "qmtcli is read-only: it never submits or cancels broker orders. Orders go through a "
+        "gateway with per-order human confirmation outside this tool."
+    ),
     "transports": ["cli", "rpc", "server", "mcp"],
     "commands": [
         {
@@ -539,30 +543,9 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "note": "connects to QMT session; no account id needed",
         },
         {
-            "name": "buy",
-            "description": "Submit a fixed-price stock buy order.",
-            "requires_account": True,
-            "danger": "places_order",
-            "inputs": {"symbol": "required", "volume": "positive multiple of 100", "price": "positive"},
-        },
-        {
-            "name": "sell",
-            "description": "Submit a fixed-price stock sell order.",
-            "requires_account": True,
-            "danger": "places_order",
-            "inputs": {"symbol": "required", "volume": "positive multiple of 100", "price": "positive"},
-        },
-        {
-            "name": "cancel",
-            "description": "Cancel an order by QMT order id.",
-            "requires_account": True,
-            "danger": "cancels_order",
-            "inputs": {"order_id": "required"},
-        },
-        {
             "name": "trade_call",
             "cli_command": "trade-call",
-            "description": "Call a public XtQuantTrader method.",
+            "description": "Call a public read-only XtQuantTrader query method (query_* / smt_query_*).",
             "requires_account": True,
             "danger": "escape_hatch",
             "inputs": {
@@ -638,8 +621,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "danger": "safe",
             "transports": ["cli"],
             "note": (
-                "stdio MCP server; excludes order placement/cancel and trade_call by design -- "
-                "use the CLI for guarded trading. Tools are generated from this capability list "
+                "stdio MCP server; excludes trade_call by design. Tools are generated from this capability list "
                 "(qmt_<name>, dashes become underscores) and every tool call is dispatched "
                 "through the same _handle_rpc_request machinery as rpc/server, so there is no "
                 "second command registry. Requires the optional mcp extra: pip install "
@@ -651,6 +633,10 @@ AGENT_CAPABILITIES: dict[str, Any] = {
 
 AGENT_SCHEMA: dict[str, Any] = {
     "protocol": "qmtcli.agent.v1",
+    "orders": (
+        "qmtcli is read-only: it never submits or cancels broker orders. Orders go through a "
+        "gateway with per-order human confirmation outside this tool."
+    ),
     "request": {
         "id": "optional string or number; echoed when present",
         "command": "required string",
@@ -683,8 +669,8 @@ AGENT_SCHEMA: dict[str, Any] = {
             "qmt_sector_stocks, full-tick -> qmt_full_tick"
         ),
         "exclusion_policy": (
-            "Excludes danger places_order/cancels_order (buy, sell, cancel), trade_call (an "
-            "unguarded escape hatch onto the full XtQuantTrader surface), and any capability "
+            "Excludes trade_call (an escape hatch onto caller-selected XtQuantTrader query "
+            "methods), and any capability "
             "restricted to a transports list that does not include rpc (the "
             "subscribe/subscribe_whole/unsubscribe trio, server-only; watch, CLI-only). Every "
             "other command -- status, doctor, data_call, fields, download, all named data "
@@ -708,8 +694,6 @@ AGENT_SCHEMA: dict[str, Any] = {
         "escape_hatch": "calls a public SDK method selected by the caller",
         "downloads_data": "downloads data into the local QMT cache",
         "mutates_local_data": "creates or modifies local custom sector definitions",
-        "places_order": "submits a broker order",
-        "cancels_order": "cancels a broker order",
     },
 }
 
@@ -749,15 +733,6 @@ AGENT_EXAMPLES: dict[str, Any] = {
     "ipo_data": {
         "command": "ipo_data",
         "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
-    },
-    "buy": {
-        "command": "buy",
-        "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
-        "account": "ACCOUNT_ID",
-        "account_type": "STOCK",
-        "symbol": "600519.SH",
-        "volume": 100,
-        "price": 1500.0,
     },
 }
 
@@ -1239,30 +1214,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     trade_call = subparsers.add_parser(
         "trade-call",
-        help="call an arbitrary public XtQuantTrader method",
+        help="call a read-only XtQuantTrader query method",
         description=(
-            "Call an arbitrary public XtQuantTrader method after connecting --account.\n"
+            "Call a read-only XtQuantTrader query method (query_* / smt_query_*) after connecting\n"
+            "--account. Order placement/cancellation methods are refused: qmtcli never trades.\n"
             "By default the StockAccount object is prepended to args; pass --no-account to skip it.\n"
             "Private methods beginning with '_' are blocked."
         ),
     )
-    trade_call.add_argument("method", help="Public XtQuantTrader method name")
+    trade_call.add_argument("method", help="XtQuantTrader query method name")
     trade_call.add_argument("--args", default="[]", help="JSON positional args array; default: []")
     trade_call.add_argument("--kwargs", default="{}", help="JSON keyword args object; default: {}")
     trade_call.add_argument("--no-account", action="store_true", help="Do not prepend StockAccount")
-
-    buy = subparsers.add_parser("buy", help="submit a fixed-price stock buy order")
-    buy.add_argument("symbol", help="Symbol such as 600519.SH")
-    buy.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
-    buy.add_argument("price", type=float, help="Limit price; must be positive")
-
-    sell = subparsers.add_parser("sell", help="submit a fixed-price stock sell order")
-    sell.add_argument("symbol", help="Symbol such as 600519.SH")
-    sell.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
-    sell.add_argument("price", type=float, help="Limit price; must be positive")
-
-    cancel = subparsers.add_parser("cancel", help="cancel an order by QMT order id")
-    cancel.add_argument("order_id", help="QMT order id")
 
     watch = subparsers.add_parser(
         "watch",
@@ -1294,8 +1257,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Read one JSON request from stdin and write one JSON response.\n"
             "Supported commands include status, doctor, data_call, fields, every named data\n"
             "command (calendar, bars, sector-stocks, download, ...), asset, positions, orders,\n"
-            "trades, the named trader queries (credit-detail, ipo-data, ...), buy, sell, cancel,\n"
-            "and trade_call. subscribe/subscribe_whole/unsubscribe are rejected here; they\n"
+            "trades, the named trader queries (credit-detail, ipo-data, ...) and trade_call\n"
+            "(query methods only). subscribe/subscribe_whole/unsubscribe are rejected here; they\n"
             "require server mode."
         ),
     )
@@ -1316,7 +1279,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Run a stdio MCP (Model Context Protocol) server. Tools are generated from\n"
             "AGENT_CAPABILITIES (qmt_<name>, dashes become underscores) and every tool call is\n"
             "dispatched through the same rpc machinery as 'rpc'/'server'.\n"
-            "Excludes buy/sell/cancel and trade_call by design; use the CLI for guarded trading.\n"
+            "Excludes trade_call by design.\n"
             "Requires the optional mcp extra: pip install 'qmtcli[mcp]'."
         ),
     )
@@ -1424,12 +1387,6 @@ def _run_command(args: argparse.Namespace) -> int:
     elif args.command in TRADE_QUERY_COMMANDS:
         spec = TRADE_QUERY_COMMANDS[args.command]
         _print_json(gateway.call_trader(spec["method"], with_account=spec["with_account"]))
-    elif args.command == "buy":
-        _print_json(gateway.submit_order(args.symbol, "BUY", args.volume, args.price))
-    elif args.command == "sell":
-        _print_json(gateway.submit_order(args.symbol, "SELL", args.volume, args.price))
-    elif args.command == "cancel":
-        _print_json(gateway.cancel_order(args.order_id))
     elif args.command == "trade-call":
         _print_json(
             gateway.call_trader(
@@ -1827,9 +1784,6 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
         "positions",
         "orders",
         "trades",
-        "buy",
-        "sell",
-        "cancel",
         "trade_call",
     }
     if command not in account_commands:
@@ -1851,12 +1805,6 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
         return gateway.query_orders(cancelable_only=request.get("cancelable_only", False))
     if command == "trades":
         return gateway.query_trades()
-    if command == "buy":
-        return gateway.submit_order(request["symbol"], "BUY", request["volume"], request["price"])
-    if command == "sell":
-        return gateway.submit_order(request["symbol"], "SELL", request["volume"], request["price"])
-    if command == "cancel":
-        return gateway.cancel_order(request["order_id"])
     if command == "trade_call":
         return gateway.call_trader(
             request["method"],

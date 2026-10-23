@@ -14,4 +14,4 @@ def test_help_documents_escape_hatches(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["trade-call", "--help"])
     assert exc.value.code == 0
-    assert "public XtQuantTrader method" in capsys.readouterr().out
+    assert "read-only XtQuantTrader query method" in capsys.readouterr().out
