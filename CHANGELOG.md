@@ -7,6 +7,12 @@ begin.
 
 ## Unreleased
 
+- Add opt-in `asset --backend native` through CLI/RPC/JSONL/MCP: a read-only,
+  version-pinned MiniQMT IPC asset query verified on Python 3.14 without xtquant.
+  SDK behavior remains the default; other commands do not gain a native backend.
+- Defer data-token initialization in RPC/JSONL/MCP until a non-native request,
+  preserving native-only sessions without SDK dependencies.
+
 - **Breaking:** qmtcli is now read-only. Removed `buy`, `sell`, and `cancel` from the CLI, `rpc`,
   `server`, and `capabilities`, and `trade-call` now only accepts `query_*` / `smt_query_*`
   methods. An agent could place an order through these without per-order approval; orders now go

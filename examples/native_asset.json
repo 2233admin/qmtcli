@@ -1,0 +1,8 @@
+{
+  "command": "asset",
+  "backend": "native",
+  "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
+  "account": "123456",
+  "account_type": "STOCK",
+  "timeout": 5
+}

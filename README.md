@@ -6,6 +6,12 @@
 
 中文 | [English](README.en.md)
 
+支持实验性的 **MiniQMT 原生资产查询**：
+`qmtcli --path <安装目录> --account <账号> asset --backend native`。
+已在 Python 3.14 验证，不导入 xtquant；仍使用客户端自带的原生环形队列运行库，
+仅支持已核验的 Windows x64 客户端版本和普通股票账户。默认资产查询继续使用 SDK。
+用法、版本指纹和限制见 [原生资产查询](docs/native-asset.md)。
+
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
 - **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，不下单。
@@ -16,7 +22,7 @@
 [xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) 文档逐条核对 43 个函数（见
 [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)）、对照
 [xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) 文档核对 25 组查询/交易接口
-（见[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)）；267 个自动化测试全绿，
+（见[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)）；320 个自动化测试全绿，
 `xtquant` 全部 fake 掉，CI 不需要真实 QMT 环境；每周由 CI 里的 `doc-drift` job 自动重新核对一次
 是否跟官方文档产生了漂移。
 
