@@ -432,9 +432,13 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "asset",
-            "description": "Query account asset.",
+            "description": "Query account asset via SDK or version-pinned native MiniQMT IPC.",
             "requires_account": True,
             "danger": "safe",
+            "inputs": {
+                "backend": "optional sdk (default) or native; native supports STOCK on Windows x64",
+                "timeout": "optional native response timeout in seconds, 0.1 to 60, default 5",
+            },
         },
         {
             "name": "positions",
@@ -643,6 +647,8 @@ AGENT_SCHEMA: dict[str, Any] = {
         "path": "optional QMT root or userdata_mini path",
         "account": "required for account/trade commands",
         "account_type": "optional, default STOCK",
+        "backend": "asset only: sdk (default) or native; no silent backend fallback",
+        "timeout": "native asset only: response deadline in seconds, 0.1 to 60, default 5",
         "data_commands": (
             "Named data commands (calendar, bars, sector-stocks, ...) accept their CLI "
             "parameter names as JSON fields, with either dashes or underscores in the command "
@@ -699,6 +705,10 @@ AGENT_SCHEMA: dict[str, Any] = {
 
 AGENT_EXAMPLES: dict[str, Any] = {
     "status": {"command": "status"},
+    "native_asset": {
+        "command": "asset", "backend": "native", "account": "123456",
+        "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini", "timeout": 5,
+    },
     "doctor": {"command": "doctor", "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini"},
     "data_call": {
         "command": "data_call",
@@ -778,7 +788,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("examples", help="print built-in agent request examples")
     subparsers.add_parser("status", help="check whether xtquant is importable")
     subparsers.add_parser("doctor", help="show SDK/module/path diagnostics")
-    subparsers.add_parser("asset", help="query stock asset for --account")
+    asset = subparsers.add_parser("asset", help="query stock asset for --account")
+    asset.add_argument("--backend", choices=("sdk", "native"), default="sdk",
+                       help="SDK (default) or experimental version-pinned native MiniQMT IPC")
+    asset.add_argument("--timeout", type=float, default=5,
+                       help="native response timeout in seconds (0.1 to 60, default 5)")
     subparsers.add_parser("positions", help="query positions for --account")
     orders = subparsers.add_parser("orders", help="query orders for --account")
     orders.add_argument(
@@ -1310,19 +1324,25 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_command(args: argparse.Namespace) -> int:
-    if getattr(args, "xtdc_token", ""):
-        QMTGateway.init_xtdc(args.xtdc_token, args.xtdc_port)
+    if args.command == "asset" and args.backend == "native":
+        _print_json(_native_asset(vars(args)))
+        return 0
+    # Stdio sessions can serve native assets with no SDK at all. Carry token
+    # configuration to dispatch instead of loading xtdatacenter on startup.
+    xtdc = (args.xtdc_token, args.xtdc_port) if getattr(args, "xtdc_token", "") else None
     if args.command == "rpc":
-        return _rpc()
+        return _rpc(xtdc)
     if args.command == "server":
-        return _server()
+        return _server(xtdc)
     if args.command == "mcp":
         try:
             from qmtcli.mcp_server import run_mcp_server
         except ImportError:
             _print_json({"ok": False, "error": "mcp extra is not installed; pip install 'qmtcli[mcp]'"})
             return 1
-        return run_mcp_server()
+        return run_mcp_server(xtdc) if xtdc else run_mcp_server()
+    if xtdc:
+        QMTGateway.init_xtdc(*xtdc)
     if args.command == "capabilities":
         _print_json(_agent_response(AGENT_CAPABILITIES))
         return 0
@@ -1737,10 +1757,13 @@ def _dispatch_sector_command(params: dict[str, Any]) -> Any:
     return result
 
 
-def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) -> dict[str, Any]:
+def _handle_rpc_request(
+    request: dict[str, Any], allow_subscribe: bool = False,
+    xtdc: tuple[str, int] | None = None,
+) -> dict[str, Any]:
     request_id = request.get("id")
     try:
-        data = _handle_rpc_data(request, allow_subscribe)
+        data = _handle_rpc_data(request, allow_subscribe, xtdc)
     except Exception as exc:  # noqa: BLE001 - JSON RPC boundary must report arbitrary failures.
         response = {"ok": False, "error": str(exc)}
     else:
@@ -1750,8 +1773,32 @@ def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) 
     return response
 
 
-def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> Any:
+def _native_asset(request: dict[str, Any]) -> Any:
+    from qmtcli.native_asset import query_native_asset
+
+    path = request.get("path") or QMTGateway.resolve_path()
+    if not path:
+        raise ValueError("native asset requires --path or an installed MiniQMT")
+    return query_native_asset(
+        path, request.get("account", ""), request.get("account_type", "STOCK"),
+        request.get("timeout", 5),
+    )
+
+
+def _handle_rpc_data(
+    request: dict[str, Any], allow_subscribe: bool = False,
+    xtdc: tuple[str, int] | None = None,
+) -> Any:
     command = request.get("command")
+    backend = request.get("backend", "sdk")
+    if backend not in ("sdk", "native"):
+        raise ValueError("backend must be sdk or native")
+    if backend == "native":
+        if command != "asset":
+            raise ValueError("native backend currently supports asset only")
+        return _native_asset(request)
+    if xtdc:
+        QMTGateway.init_xtdc(*xtdc)
     if command == "capabilities":
         return AGENT_CAPABILITIES
     if command == "schema":
@@ -1918,18 +1965,18 @@ def _handle_watch_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rpc() -> int:
+def _rpc(xtdc: tuple[str, int] | None = None) -> int:
     request = json.loads((sys.stdin.read() or "{}").lstrip("\ufeff"))
-    _print_json(_handle_rpc_request(request))
+    _print_json(_handle_rpc_request(request, xtdc=xtdc))
     return 0
 
 
-def _server() -> int:
+def _server(xtdc: tuple[str, int] | None = None) -> int:
     for line in sys.stdin:
         line = line.strip().lstrip("\ufeff")
         if not line:
             continue
-        response = _handle_rpc_request(json.loads(line), allow_subscribe=True)
+        response = _handle_rpc_request(json.loads(line), allow_subscribe=True, xtdc=xtdc)
         _emit(response)
     return 0
 
