@@ -6,6 +6,10 @@
 
 中文 | [English](README.en.md)
 
+账户查询现支持**常驻会话复用、一次读取账户全貌及账户增量 JSONL 推送**。
+使用 `account-snapshot`，或在 `qmtcli server` 中调用 `account_subscribe` 后查询全貌。
+同账户重复查询复用连接，每次仍读取最新数据；[用法、恢复语义与 Python 版本边界](docs/account-session.md)。
+
 支持实验性的 **MiniQMT 原生资产查询**：
 `qmtcli --path <安装目录> --account <账号> asset --backend native`。
 已在 Python 3.14 验证，不导入 xtquant；仍使用客户端自带的原生环形队列运行库，

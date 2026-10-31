@@ -1,0 +1,4 @@
+{"id":1,"command":"account_subscribe","account":"YOUR_ACCOUNT"}
+{"id":2,"command":"account_snapshot","account":"YOUR_ACCOUNT"}
+{"id":3,"command":"account_snapshot","account":"YOUR_ACCOUNT","asset_backend":"native"}
+{"id":4,"command":"account_unsubscribe"}
