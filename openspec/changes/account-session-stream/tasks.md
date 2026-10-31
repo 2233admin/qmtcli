@@ -24,3 +24,6 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Native position/order codecs and server cancelable filtering, with actual SDK public-field comparison.
 - [x] Fully native CLI/JSONL snapshots under Python 3.14 with xtquant import forbidden; invalid-account recovery and EOF.
 - [x] Agent/MCP discovery, examples, docs and 400-test regression for this extension.
+
+- [x] Research-only native quote RPC snapshot, subscription lifecycle and history probes on Python 3.15.2, with frame negative controls and real supply failure notification.
+- [ ] Formal QMTCLI native market integration, live market push and auction semantic acceptance (not established by the probe).

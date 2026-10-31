@@ -253,3 +253,55 @@ logged-in client/service: profile and queue readiness -> normal real-PID handsha
 comparison -> position/order/trade codecs and lifecycle checks. Existing MiniQMT
 76-byte asset parsing must not be reused for big QMT. A big-QMT production adapter
 has not been added or accepted by this test.
+
+## Native market-data protocol tests (2026-11-01, research only)
+
+Authorized by the user's request to test quotes/subscriptions/auction access.
+No production QMTCLI market backend was added in this slice. A separate bounded
+research client was built against observed ordinary SDK requests and server code,
+then run on Python 3.15.2 with xtquant imports explicitly forbidden. It reuses the
+bundled pure-Python xtbson codec, not the CPython IPythonApiClient extension.
+
+Direct sources: miniquote handlers getFullTick 0x81540, subscribeQuote 0x8B770/
+0x6C160 and unsubscribeQuote 0x8F270; net.dll NetPackageHeader::decode 0x4D640;
+utils.dll exported generateCRC 0xD5200. Passive hooks were attached only to this
+test's own ordinary SDK client and removed/ended with that client. No auth state,
+configuration or process identity was modified. Native authPid names the actual
+calling process PID; no borrowed identity, patched check or replayed authentication.
+
+Protocol findings: 12-byte >IIHH header, zlib body, CRC flag 0x2000; CRC over the
+compressed body equals zlib.crc32(body, 0xffffffff), stored big-endian. Calibrated
+against vendor generateCRC for three synthetic vectors and observed bidirectional
+frames. First auth request lacks the CRC trailer, normal replies/requests include
+it. Request params are BSON arrays with named elements, not positional 0/1 keys.
+A generic BSON decoder displays arrays as lists and hides those names. The probe
+encodes through the maintained codec and changes only the params container tag.
+Native notifications observed from history supply use kind=4, flags=0x2041; ordinary
+request/reply uses kind=3, flags=0x2042 (initial auth request 0x42).
+
+| Test | Actual check | Result and limit |
+|---|---|---|
+| Native snapshot reads | verify-native-quote-rpc.py, real localhost:58610, Python 3.15.2 | Two securities, 18 public fields and four five-level arrays match SDK control; no xtquant or BSON C extension imported |
+| Numeric comparison | Canonical raw BSON vs SDK JSON values | All fields/integers exact; two floating price entries differ by 1.7763568394002505e-15; explicit float tolerance 1e-12, difference retained in receipt |
+| Subscription lifecycle | Two direct subscribeQuote requests and matching owned unsubscribeQuote requests | Both return positive subscription IDs and ErrorID=0; both unsubscribed; observation yielded 0 quote push frames, so actual market event delivery is unverified |
+| Auction history vs continuous control | Direct requestFromCache, two securities, 2026-10-30 09:15–09:26 and 09:30–09:32, cap 200 | Both windows return only PT/CP metadata, no records; ordinary SDK control also returns 0 rows. No auction field/quantity interpretation established |
+| Historical supply | Native supplyHistoryData2 plus real asynchronous notification, same request via SDK control | RPC accepted=true; notification finished=0,total=-1,message=创建下载任务失败. The download failed; request acceptance is not data success. Exact downstream reason remains unresolved |
+| Frame negative controls | check-native-quote-framing.py under Python 3.15.2 | Fragmented/coalesced frames handled; corrupted CRC, truncated/oversized frames, unknown methods and non-caller PID rejected before send where applicable |
+| Resource cleanup | Owned-process inventory and shared-client response check | 0 owned probes remaining; MiniQMT/miniquote responsive; only the probe's own subscriptions removed |
+
+Latest snapshot timestamps are 2026-10-31 13:34:26 and 11:30:00 +08:00. These are
+cached quotes, not proof of fresh trading-session data. No polling result was
+relabelled as a subscription callback, and no supply notification counted as a
+market quote event. A bounded log search found no matching supply failure text;
+it did not establish a more specific download root cause.
+
+Private receipt root: F:/projects/_research/qmt-ida-20261031/recovery/five-areas/.
+Primary results: native-quote-rpc-live.json (probe source hash),
+native-quote-framing-checks.json, native-quote-protocol-profile.json and
+quote-rpc-decoded-shapes.json. Negative receipts retain the initial CRC-boundary
+failure, positional-parameter failure and exact BSON/JSON float comparison.
+Raw socket buffers stayed in probe memory; only public market schemas/values and
+protocol metadata were persisted. Current server/library hashes recorded and
+compared with prior inventory when available. Formal QMTCLI native quote commands,
+real subscription data, auction samples/semantics and disconnect recovery remain
+unfinished. The new probe is not an SDK ABI wrapper or a production release.
