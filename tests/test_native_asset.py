@@ -17,7 +17,8 @@ def test_connection_frame_matches_recovered_envelope():
     assert decode_frame(raw) == (7, 10001, 0, True, 123, raw[24:])
 
 
-def test_only_connect_and_asset_requests_can_be_encoded():
+def test_native_read_request_allowlist_excludes_trading_operations():
+    assert decode_frame(encode_frame(1, 20007, 123, encode_account("A", "STOCK")))[1] == 20007
     for forbidden in (20001, 20003, 20009, 50001):
         with pytest.raises(ValueError, match="read-only"):
             encode_frame(1, forbidden, 123, b"")

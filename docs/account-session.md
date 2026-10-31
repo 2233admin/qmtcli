@@ -11,6 +11,12 @@
 qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT account-snapshot
 ```
 
+当前已验证的 MiniQMT 若遇到 SDK 成交查询无回复，显式选用原生成交：
+
+```powershell
+qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT account-snapshot --trades-backend native
+```
+
 RPC / JSONL：
 
 ```json
@@ -32,7 +38,7 @@ RPC / JSONL：
 
 ```jsonl
 {"id":1,"command":"account_subscribe","account":"YOUR_ACCOUNT"}
-{"id":2,"command":"account_snapshot","account":"YOUR_ACCOUNT"}
+{"id":2,"command":"account_snapshot","account":"YOUR_ACCOUNT","trades_backend":"native"}
 {"id":3,"command":"account_unsubscribe"}
 ```
 
@@ -61,13 +67,26 @@ SDK 推送会以独立 JSONL 行交错在响应之间：
 {"command":"account_snapshot","account":"YOUR_ACCOUNT","asset_backend":"native","timeout":5}
 ```
 
-这只将资产部分交给已有、版本锁定的 MiniQMT 原生读取器；其他三项仍用 SDK，
-仍需在兼容 SDK 的 Python 中运行 server。原生资产当前每次使用隔离子进程，尚未
-改成常驻原生 worker，不能把 SDK 会话复用收益套到它上面。
+`asset_backend=native` 选择原生资产；`trades_backend=native` 选择原生成交，两者都选时
+共用同一个隔离原生 worker 和本地会话。持仓和委托仍用 SDK，所以完整快照的 server
+仍需运行在兼容 SDK 的 Python 中。单独的原生成交不需要 SDK：
+
+```powershell
+qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT trades --backend native
+```
+
+原生成交会先读取同一请求账户的资产，验证账户存在，再读取成交；552字节的成交记录
+按实际分片重组。只有匹配版本服务的明确空列表结束回复，且账户验证成功，才返回空列表。
+超时、账户错误、残缺分片和未知版本会报错，不用空列表掩盖失败。
+数字 `order_id` 可能为0，不能据此把所有成交关联到同一委托。核对委托时使用账户、
+证券和柜台 `order_sysid`；区分成交还需 `traded_id`，不自行补造缺失编号。
+新增服务指纹检查包括 `OrderService_mini.dll`。原生 worker 仍每个快照启动一次；
+SDK 连接复用的收益不代表已经实现常驻原生 worker。
 
 Agent 自身可运行 Python 3.14、Rust 或其他语言，通过 stdin/stdout 驱动一个兼容
 SDK 的 server 进程。无需将 SDK 导入 Agent 进程，也无需增加 TCP 服务。
-单独的 `asset --backend native` 已有 Python 3.14 路径；完整账户原生查询尚未实现。
+`asset --backend native` 和 `trades --backend native` 已在 Python 3.14 验证；
+持仓和委托的完整原生查询尚未实现。
 
 `account-snapshot` 可通过 CLI、RPC、server 和 MCP 发现；账户增量命令仅供 JSONL server。
 MCP 的单次 snapshot 在内部复用一次连接，当前不跨 MCP 工具调用保留会话。
@@ -78,5 +97,8 @@ MCP 的单次 snapshot 在内部复用一次连接，当前不跨 MCP 工具调�
 实际 gateway + 假 SDK 测试同时验证一次注册、start、connect、subscribe 和一次 stop，
 以及断线世代、失败清理、账户隔离和迟到回调。连接数降低不等于已测得相同比例的耗时加速。
 当前客户端真实 SDK 只读检查及其限制记录在 OpenSpec 验证凭据中，不把模拟事件写成实盘验证。
-2026-11-01 的两次只读检查收到了资产、持仓和委托回复，成交查询均未在预算内返回；
-因此尚未取得完整四项成功样本。缺失成交回复会明确报错，不用空列表代替。
+2026-11-01 最初的 SDK-only 检查在成交查询上超时；原生读取随后收到实际非空成交，
+推翻了“当前成交为空”的猜测。显式 `trades_backend=native` 的完整 JSONL server 流程
+现已连续两次返回四项数据，并完成订阅、退订和 EOF 退出。两种资产后端组合均验证通过。
+这不等于 SDK 成交回调本身已修复，也不等于真实成交/断线增量事件全部验收。
+实际返回的成交还与 SDK 委托逐条核对了证券、方向、系统号及数量范围。

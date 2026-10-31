@@ -199,3 +199,21 @@ def test_invalid_command_type_preserves_server_envelope(gateway, monkeypatch, ca
     ])
     assert not replies[0]["ok"] and replies[0]["id"] == 1
     assert replies[1]["ok"] and replies[1]["id"] == 2
+
+
+def test_native_trade_snapshot_uses_verified_rows_and_shares_native_asset(gateway, monkeypatch, capsys):
+    calls = []
+
+    def native(request, timeout=None):
+        calls.append(timeout)
+        return {"asset": {"cash": 42}, "trades": [{"traded_id": "NATIVE_T1"}]}
+
+    monkeypatch.setattr(cli, "_native_account", native)
+    monkeypatch.setattr(gateway, "query_trades", lambda *a, **k: pytest.fail("SDK trade query used"))
+    monkeypatch.setattr(cli, "_native_asset", lambda *a: pytest.fail("second native session opened"))
+    reply = serve(monkeypatch, capsys, [{"command": "account_snapshot", "account": "A",
+                                      "asset_backend": "native", "trades_backend": "native"}])[0]
+    assert reply["ok"] and reply["data"]["asset"]["cash"] == 42
+    assert reply["data"]["trades"][0]["traded_id"] == "NATIVE_T1"
+    assert reply["data"]["meta"]["trades_backend"] == "native"
+    assert len(calls) == 1

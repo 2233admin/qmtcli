@@ -442,6 +442,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "danger": "safe",
             "inputs": {
                 "asset_backend": "sdk (default) or pinned native asset; other sections need SDK",
+                "trades_backend": "sdk (default) or pinned native trades; explicit native avoids affected SDK reply failures",
                 "timeout": "snapshot response budget seconds, 0.1 to 60, default 5; excludes SDK setup",
             },
             "note": "Sequential, non-atomic reads; includes timestamps and account-event sequence bounds.",
@@ -482,9 +483,13 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         },
         {
             "name": "trades",
-            "description": "Query account trades.",
+            "description": "Query account trades via SDK or pinned MiniQMT native IPC.",
             "requires_account": True,
             "danger": "safe",
+            "inputs": {
+                "backend": "sdk (default) or native; native supports pinned STOCK MiniQMT on Windows x64",
+                "timeout": "native reply deadline seconds, default 5",
+            },
         },
         {
             "name": "position-statistics",
@@ -674,8 +679,9 @@ AGENT_SCHEMA: dict[str, Any] = {
         "path": "optional QMT root or userdata_mini path",
         "account": "required for account/trade commands",
         "account_type": "optional, default STOCK",
-        "backend": "asset only: sdk (default) or native; no silent backend fallback",
+        "backend": "asset/trades: sdk (default) or native; no silent backend fallback",
         "asset_backend": "account_snapshot asset section only: sdk (default) or native",
+        "trades_backend": "account_snapshot trades section only: sdk (default) or native",
         "timeout": "native asset only: response deadline in seconds, 0.1 to 60, default 5",
         "data_commands": (
             "Named data commands (calendar, bars, sector-stocks, ...) accept their CLI "
@@ -741,6 +747,10 @@ AGENT_SCHEMA: dict[str, Any] = {
 
 AGENT_EXAMPLES: dict[str, Any] = {
     "account_snapshot": {"command": "account_snapshot", "account": "123456"},
+    "native_trade_snapshot": {
+        "command": "account_snapshot", "account": "123456", "trades_backend": "native",
+    },
+    "native_trades": {"command": "trades", "account": "123456", "backend": "native"},
     "account_subscribe": {"command": "account_subscribe", "account": "123456"},
     "account_unsubscribe": {"command": "account_unsubscribe"},
     "status": {"command": "status"},
@@ -839,11 +849,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="only return cancelable orders",
     )
-    subparsers.add_parser("trades", help="query trades for --account")
+    trades = subparsers.add_parser("trades", help="query trades for --account")
+    trades.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    trades.add_argument("--timeout", type=float, default=5)
     snapshot = subparsers.add_parser(
         "account-snapshot", help="read assets, positions, orders and trades in one session"
     )
     snapshot.add_argument("--asset-backend", choices=("sdk", "native"), default="sdk")
+    snapshot.add_argument("--trades-backend", choices=("sdk", "native"), default="sdk")
     snapshot.add_argument("--timeout", type=float, default=5, help="snapshot response budget seconds")
     subparsers.add_parser(
         "position-statistics",
@@ -1368,8 +1381,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_command(args: argparse.Namespace) -> int:
-    if args.command == "asset" and args.backend == "native":
-        _print_json(_native_asset(vars(args)))
+    if args.command in {"asset", "trades"} and args.backend == "native":
+        _print_json(_native_asset(vars(args)) if args.command == "asset" else _native_account(vars(args))["trades"])
         return 0
     # Stdio sessions can serve native assets with no SDK at all. Carry token
     # configuration to dispatch instead of loading xtdatacenter on startup.
@@ -1840,6 +1853,18 @@ def _native_asset(request: dict[str, Any]) -> Any:
     )
 
 
+def _native_account(request: dict[str, Any], timeout: float | None = None) -> dict:
+    from qmtcli.native_trades import query_native_account
+
+    path = request.get("path") or QMTGateway.resolve_path()
+    if not path:
+        raise ValueError("native trades require --path or an installed MiniQMT")
+    return query_native_account(
+        path, request.get("account", ""), request.get("account_type", "STOCK"),
+        request.get("timeout", 5) if timeout is None else timeout,
+    )
+
+
 def _handle_rpc_data(
     request: dict[str, Any], allow_subscribe: bool = False,
     xtdc: tuple[str, int] | None = None,
@@ -1850,9 +1875,11 @@ def _handle_rpc_data(
     if backend not in ("sdk", "native"):
         raise ValueError("backend must be sdk or native")
     if backend == "native":
-        if command != "asset":
-            raise ValueError("native backend currently supports asset only")
-        return _native_asset(request)
+        if command == "asset":
+            return _native_asset(request)
+        if command == "trades":
+            return _native_account(request)["trades"]
+        raise ValueError("native backend currently supports asset and trades only")
     if xtdc:
         QMTGateway.init_xtdc(*xtdc)
     if command == "account_snapshot":
@@ -1955,6 +1982,9 @@ def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -
     backend = request.get("asset_backend", "sdk")
     if backend not in {"sdk", "native"}:
         raise ValueError("asset_backend must be sdk or native")
+    trades_backend = request.get("trades_backend", "sdk")
+    if trades_backend not in {"sdk", "native"}:
+        raise ValueError("trades_backend must be sdk or native")
     timeout = request.get("timeout", 5)
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or not 0.1 <= timeout <= 60):
@@ -1973,11 +2003,14 @@ def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -
                 raise TimeoutError("account snapshot response deadline exceeded")
             return left
 
+        native = _native_account(request, remaining()) if trades_backend == "native" else None
+        native_asset = native["asset"] if native is not None else None
         result = {
-            "asset": _native_asset(request) if backend == "native" else gateway.query_asset(timeout=remaining()),
+            "asset": (native_asset if native is not None else _native_asset(request))
+            if backend == "native" else gateway.query_asset(timeout=remaining()),
             "positions": gateway.query_positions(timeout=remaining()),
             "orders": gateway.query_orders(timeout=remaining()),
-            "trades": gateway.query_trades(timeout=remaining()),
+            "trades": native["trades"] if native is not None else gateway.query_trades(timeout=remaining()),
         }
         missing = [name for name, value in result.items() if value is None]
         if missing:
@@ -1988,7 +2021,8 @@ def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -
         result["meta"] = {
             "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
             "duration_ms": round((time.perf_counter() - clock) * 1000, 3), "atomic": False,
-            "asset_backend": backend, "generation": cursor["generation"],
+            "asset_backend": backend, "trades_backend": trades_backend,
+            "generation": cursor["generation"],
             "sequence_start": cursor["sequence"], "sequence_end": end["sequence"],
         }
         return result
