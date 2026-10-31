@@ -139,3 +139,24 @@ def test_worker_crash_fails_current_read_without_replay(child, monkeypatch):
     with pytest.raises(RuntimeError, match="exited"):
         session.query("asset", 1)
     assert len(child.instances) == 1 and process.returncode == 0
+
+
+@pytest.mark.parametrize("reply", [
+    "{", "[]", '{"id":true,"ok":true,"data":{}}',
+    '{"id":2,"ok":true,"data":[]}', '{"id":2,"ok":false,"error":"synthetic failure"}',
+])
+def test_invalid_worker_output_rejects_read_then_recovers(child, monkeypatch, reply):
+    session = NativeSession("SYNTHETIC", "A")
+    session.query("asset", 1)
+    process = child.instances[0]
+    monkeypatch.setattr(process, "write",
+                        lambda line: process.output.put(native_asset.WORKER_MARKER + reply + "\n"))
+    with pytest.raises(RuntimeError):
+        session.query("asset", 1)
+    assert process.returncode == 0 and session._process is None
+    assert len(child.instances) == 1
+    try:
+        assert session.query("asset", 1)["asset"]["read"] == 1
+        assert len(child.instances) == 2 and session.generation == 2
+    finally:
+        session.close()

@@ -7,7 +7,7 @@
 - [x] Full pytest, ruff, parseable examples and before/after connection receipt.
 - [x] Record live verification or its concrete limits; inspect changes and owned processes.
 
-Implementation checks: 373 tests pass, ruff and diff whitespace checks pass.
+Implementation checks: 378 tests pass, ruff and diff whitespace checks pass.
 These checkboxes record completed engineering checks, not principal acceptance or
 full live event/reconnect validation. See design.md for the live limit and receipts.
 
@@ -17,3 +17,6 @@ full live event/reconnect validation. See design.md for the live limit and recei
 
 - [x] Persistent native worker reuse, fresh wire sequence tests and real ten-snapshot acceptance.
 - [x] SDK delivery loss localized before Python callback; exact vendor defect remains unresolved.
+
+- [x] Extended real worker-death/deadline recovery, wrong-account JSONL recovery and 100 complete snapshots; raw receipts retained.
+- [x] Invalid worker output rejection/recovery regression cases; 378 tests pass.

@@ -142,3 +142,30 @@ with principal acceptance and the native asset base acceptance outstanding.
 Final checks: 373 pytest tests passed; ruff general and C901 native-module checks
 passed. An initial Code Intel run detected edits made while it was consuming the
 source manifest and failed snapshot consistency (1793479842464-37784-core). The frozen-tree rerun passed: 1793479955478-2480-core/run-complete.json under the same artifact root.
+
+## Extended recovery and sustained-read acceptance (2026-11-01)
+
+No production implementation changes in this follow-up. Tests and receipts extend
+coverage of dd9d8dc. All scripts use only account queries, and crash tests terminate
+only handles returned by the test session's own Popen, never shared MiniQMT processes.
+
+| Conclusion | Verification | Result and limit |
+|---|---|---|
+| Sustained complete snapshots | verify-qmtcli-100-snapshots.py, actual JSONL server, no query mocks | 100/100 complete; native generation=1; every trade checked against SDK orders; server exit=0 |
+| Native worker restart | verify-qmtcli-native-recovery.py under Python 3.14 | 21 reads on one worker; 3 idle-worker deaths each recovered on next read; write-boundary crash rejected current read and next read recovered |
+| Deadline failure | Same real native recovery script | Startup deadline deliberately expired; error and cleanup, later query succeeded; observed failure/cleanup 225.320ms, not a process-level microsecond hard deadline |
+| Owned resource release | Same script plus final process inventory | All recorded owned workers exited; 0 recorded owned reply paths remained; no qmtcli server/native worker found after public tests; this is not a memory-leak proof |
+| Wrong-account isolation/recovery | verify-qmtcli-invalid-account-recovery.py, Python 3.14 public native JSONL | Normal/wrong/normal produced success/error/success with correct IDs; wrong account had no data; successful replies matched requested account |
+| Invalid child replies | test_invalid_worker_output_rejects_read_then_recovers | Malformed JSON, non-object envelope, boolean ID, non-object data, explicit failure all reject current request without replay; later request starts new generation |
+| Full regression | uv run --no-sync --extra dev pytest -q; ruff check . | 378 passed (3.81s); ruff passed, exit=0 |
+| Broker event/reconnect behavior | No broker disconnect or trade event induced | Still not verified. Worker restart is not broker reconnect; no claim of real incremental consistency |
+
+Timing: first snapshot 263.498ms; 99 warm collection samples min=29.950ms,
+median=61.279ms, max=91.827ms. Total server run 6789.424ms including startup/EOF.
+Cold sample uses SDK asset/native trades; warm samples use native asset/trades with
+SDK positions/orders. These samples show variability, not a fixed 45ms contract.
+
+Private sanitized receipts remain under the existing recovery/five-areas directory:
+qmtcli-100-snapshots-live.json, qmtcli-native-recovery-live.json and
+qmtcli-invalid-account-recovery-live.json. Real account values/IDs are never committed.
+Shared XtMiniQmt/miniquote remained responsive. Work stays in_review/unmerged.
