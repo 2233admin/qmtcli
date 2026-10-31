@@ -222,3 +222,34 @@ C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session
 1793483704357-77740-core/run-complete.json. Parseable JSONL/examples and MCP backend
 schema checks passed. Final inventory found no owned qmtcli worker/server or IDA
 extractor remaining; both shared clients were responsive. Work remains in_review.
+
+## Python 3.15.2 compatibility and big-QMT preflight (2026-11-01)
+
+Python.org lists 3.15.2 (2026-10-25) as the latest stable release:
+https://www.python.org/downloads/release/python-3152/ . Existing uv 0.12.23 has no
+managed download for that request. Used the official Windows x64 embeddable ZIP,
+SHA256 d012f3aa29cf07436dae8aea1fec0fd195c2612a0b059b1f915ae0afb9ad1f62,
+under the research python315-embed directory. Only that isolated runtime's ._pth
+includes this worktree's src; no default interpreter or Windows registry change.
+
+| Conclusion | Verification | Result and limit |
+|---|---|---|
+| Latest stable Python native account queries | python315-embed/python.exe verify-qmtcli-python315.py, real MiniQMT, SDK import forbidden | Python 3.15.2, 21 complete JSONL snapshots, CLI positions/orders/full snapshot, server-side cancelable filter and invalid-account recovery all pass; exit=0 |
+| Returned fields | Same script using separate SDK-compatible reference process | Assets/positions/orders compare against SDK canonical fields; trade-order identities and direction/quantity checks pass; SDK reference remains Python 3.11, not a claim of SDK support on 3.15 |
+| Big-QMT prerequisites | Current file hashes, process and userdata queue inventory | All five pinned module hashes match; XtItClient is absent and both userdata request queues absent; big-QMT live handshake/data are not tested |
+
+Private receipts: recovery/five-areas/qmtcli-fully-native-python315-live.json
+(source hashes bound), recovery/big-qmt/runtime-preflight-20261101.json. Both under
+the existing qmt-ida research root. Latest native sample min/median/max collection
+31.806/45.956/247.012ms; no cross-runtime performance claim. No production code change
+was needed and no owned query worker remains. Shared MiniQMT processes responsive.
+
+Official external xtquant API is a Python library talking to MiniQMT; QMTCLI's
+native JSON interface is a separate protocol implementation using vendor queue
+runtime, not an official drop-in Python package. Big-QMT additionally has its
+client-managed Python/ContextInfo API. Big-QMT next validation needs the normal
+logged-in client/service: profile and queue readiness -> normal real-PID handshake
+-> account enumeration -> 60-byte asset reply -> independent UI/official API
+comparison -> position/order/trade codecs and lifecycle checks. Existing MiniQMT
+76-byte asset parsing must not be reused for big QMT. A big-QMT production adapter
+has not been added or accepted by this test.
