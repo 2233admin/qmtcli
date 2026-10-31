@@ -339,3 +339,77 @@ Private receipts: nontrading-data-availability.json and
 native-nontrading-data-availability.json under existing recovery/five-areas root.
 Scripts probe-nontrading-data.py and probe-native-nontrading-data.py ran with exit=0.
 All native queries used the real caller PID and allowed read methods only.
+
+## Applied QMT cache maintenance (2026-11-01)
+
+User requested data maintenance. Scope selected after the two-stock pilot: refresh
+only existing SH/SZ/BJ daily files, plus the pilot stocks' needed minute/tick windows.
+No new whole-market minute/tick download, QMT install, client restart, configuration
+change, trading/account operation or synthetic bar fill was performed. This is an
+actual cache update, not only a request/diagnostic test. No recurring task installed.
+
+### Backup and delivery
+
+- Original pilot six files were copied and SHA256-checked before writes:
+  F:/projects/_research/qmt-ida-20261031/cache-maintenance-backups/20261031T231627Z/.
+- Complete existing daily inventory: 5579 files, 121348888 bytes, archived with
+  stdlib ZipFile into existing-daily-20261031T232658Z/daily-cache.zip under the same
+  backup root. Every source buffer was hashed into manifest.json; archive entry
+  count and full ZIP CRC test passed. Final archive SHA256:
+  f2ce844c89c8597e617fdffc2e550aec850b996b139fa25a060933da25acc990.
+  Full daily archive was taken after the two-stock pilot; its originals remain in
+  the pilot backup above. Both are retained for rollback provenance.
+- First per-file bulk backup was slow and stopped before any download stage.
+  Its 988 duplicate copies in the precisely verified owned partial directory
+  existing-daily-20261031T232424Z were removed after full archive validation;
+  original QMT files and complete backups were retained.
+
+### Verified results
+
+| Scope | Actual check | Result and remaining limits |
+|---|---|---|
+| Existing daily caches | Fresh SDK process, all 5579 codes, actual time/close/volume rows in October query window | 5571 have 2026-10-30 data; 5566 cover every expected session from 10-21 to 10-30; 0 nonfinite/negative checked values and 0 duplicate/unordered timestamps |
+| Daily exceptions | Actual dates plus cached contract metadata | 13 codes with missing session dates or no October rows; includes 6 older latest dates and 2 with no records in query window. Metadata review produced no pre-listing explanation. Do not call empty October queries physically empty files, or infer all gaps are corruption/suspension |
+| Normal metadata control | 600000.SH against exception IsTrading flags | Normal control also returns IsTrading=false on Sunday; this flag alone does not explain exceptions. Raw InstrumentStatus/expiry fields were retained without inventing a status mapping |
+| Pilot daily/minute coverage | verify-qmt-cache-coverage.py, fresh process | Both 600000.SH and 000001.SZ have all 8 expected daily records and 1928 minute records (241/session), timestamps ordered/unique, finite prices/amount/volume fields |
+| Pilot auction tick maintenance | Official single-symbol supply_history_data, new physical 20261030.dat files, independent historical readback | 10-30 09:15–09:26 returns 190 rows for 600000.SH and 64 for 000001.SZ. Original 20261019 tick files retained. Tick request covered 09:15–09:32, not the whole trading day |
+| Cleanup | Final process inventory and shared-client response | No owned maintenance or IDA extraction processes remain; shared MiniQMT/miniquote responsive; main working tree user's four pre-existing changes preserved |
+
+### Download behavior learned
+
+- Two-stock day download passed; initial immediate minute readback still saw old
+  values, while later independent process saw new files/data. A completion callback
+  and fresh cache visibility must be checked separately; precise SDK writer ordering
+  was not established.
+- Batch supply_history_data2 was unreliable in this run: second same-client batch
+  had no progress, fresh-client retry passed, and a later fresh batch stalled at
+  118/200. Such batches were stopped and kept as failed/incomplete receipts.
+- Documented single-symbol client.supply_history_data was tested on 20 missing
+  codes; 18 returned actual target-date data while 2 stayed older. It was then used
+  for the remaining 3663 codes; all calls returned without exceptions. This is not
+  the acceptance criterion: the independent data-read results above are authoritative.
+- The same single-symbol entry point actually generated new tick data although
+  supply_history_data2 reported 创建下载任务失败 or no progress. The batch route's
+  exact internal defect remains unresolved; no authentication check was altered.
+- An experimental native-maintenance probe hit an unsupported RPC frame while
+  waiting for successful download notifications. It was not used for bulk data
+  maintenance, and native full-history decoding is not declared complete. Actual
+  maintenance used the installed supported SDK in its compatible research runtime.
+
+Private durable receipts under existing recovery/five-areas: cache-maintenance-summary.json,
+existing-daily-maintenance.json, existing-daily-maintenance-resume.json,
+legacy-daily-maintenance.json, existing-daily-maintenance-verification.json,
+cache-maintenance-coverage.json, cache-maintenance-exceptions.json/.csv and
+cache-maintenance-tick-legacy-600000_SH.json / -000001_SZ.json. The auction receipt
+now records the still-failing batch download separately from successful cached
+readback after the legacy download. Old negative receipts are retained separately.
+An initial full-check script list-vs-array comparison error was corrected before
+final verification; it was not classified as a market-data failure.
+
+Reusable research tools: maintain-qmt-market-cache.py, maintain-existing-qmt-daily.py,
+maintain-legacy-daily.py, verify-qmt-cache-coverage.py and review-qmt-cache-exceptions.py.
+The scripts adapt existing normal SDK calls and stdlib archival; no new package was
+installed. This turn changed data and receipts/docs only, not QMTCLI production
+Python code, so its unchanged unit suite was not rerun as a substitute for data QA.
+Review items remain the 13 per-symbol gaps and batch/native maintenance lifecycle;
+no fabricated records or blanket completed-software claim.

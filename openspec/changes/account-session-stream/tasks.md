@@ -27,3 +27,7 @@ full live event/reconnect validation. See design.md for the live limit and recei
 
 - [x] Research-only native quote RPC snapshot, subscription lifecycle and history probes on Python 3.15.2, with frame negative controls and real supply failure notification.
 - [ ] Formal QMTCLI native market integration, live market push and auction semantic acceptance (not established by the probe).
+
+- [x] Actual maintenance: full existing daily backup, 5579-code verification, 5571 at target date, 5566 complete eight-session coverage.
+- [x] Two-stock minute/tick updates and real 10-30 auction readback; exception CSV and independent freshness/numeric checks.
+- [ ] Resolve/classify 13 symbol-specific calendar gaps; batch/native download lifecycle remains under review.
