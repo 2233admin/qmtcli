@@ -305,3 +305,37 @@ protocol metadata were persisted. Current server/library hashes recorded and
 compared with prior inventory when available. Formal QMTCLI native quote commands,
 real subscription data, auction samples/semantics and disconnect recovery remain
 unfinished. The new probe is not an SDK ABI wrapper or a production release.
+
+## Sunday availability and corrected auction sampling (2026-11-01)
+
+[K] Host Get-Date: 2026-11-01 Sunday, China Standard Time (+08:00). New evidence
+supersedes the broad inference that no historical auction samples are available:
+the earlier empty result was specific to 2026-10-30, while this installation has
+older data. No downloads were performed in this follow-up.
+
+| Dataset | Current actual result | Path and limitation |
+|---|---|---|
+| Instrument metadata | Nonempty; SDK filtered view 36 fields, native response 55 fields | Native Python 3.15.2, no xtquant import; full raw field semantics not newly certified |
+| Instrument type | Stock classification returned | SDK control |
+| Sectors / members | 854 sectors; existing 沪深A股 sector returns 5224 codes | Both native and SDK; current client's cached inventory, not a claim of latest official universe size |
+| Trading dates | 2026-10-26 through 2026-10-30, five dates | Native and SDK, requested 10-26 through 11-06/07; not future calendar completeness |
+| Dividend factors / financial data | Nonempty cached dividend factors; cached balance-sheet/income tables | SDK raw client reads, no pandas conversion or dependency installation |
+| Historical 1d / 1m / tick | Two securities each return five requested records | SDK control; K-line returns dict-of-columns, so dict length must not be counted as row count |
+| Cached auction window | 2026-10-19 09:15–09:26: 600000.SH 182 rows, 000001.SZ 60 rows | SDK decoded tick arrays; native requestFromCache also returns actual B payloads of 1614/1012 bytes plus T/HIS/DV/DT/PT/CP metadata |
+| Cached continuous control | 2026-10-19 09:30–09:32: both securities 41 rows | SDK control; these data do not validate live push |
+| Missing datasets in current request | 000300.SH weight map and holiday list empty | Empty cache/request result; no claim these datasets require an open market |
+
+Cache coverage observed from limited trailing samples: day bars 2026-10-14 through
+10-20, minute bars 10-20 13:09–13:13, tick samples 10-19 15:25–15:30. These are older
+cached records. SDK history-supply failure on the requested 10-30 range remains
+real; Sunday alone does not explain task creation failure, and should not be used
+as its diagnosis. Live quote push still needs actual new data; historical auction
+semantics can be validated against stored trading-day data without waiting for open.
+
+Native historical compressed B decoding is not implemented/validated in the probe;
+receipt proves the payload was received, not that all native fields have been
+restored. No meanings for auction matched/unmatched quantities have been assigned.
+Private receipts: nontrading-data-availability.json and
+native-nontrading-data-availability.json under existing recovery/five-areas root.
+Scripts probe-nontrading-data.py and probe-native-nontrading-data.py ran with exit=0.
+All native queries used the real caller PID and allowed read methods only.
