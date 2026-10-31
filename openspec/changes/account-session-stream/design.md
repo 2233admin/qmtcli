@@ -20,7 +20,7 @@ subsequent queries. Switching account ends the previous subscription.
 Native asset and trades remain crash-isolated and version-pinned. Do not infer native
 position/order codecs from internal C++ structures. A snapshot explicitly chooses
 asset/trade backends and annotates both. Both native sections share one worker;
-positions/orders use the retained SDK session. This change extends the previous
+positions/orders use the retained SDK session in the section-backend mode. Fully native mode now reads all four in one native worker. This change extends the previous
 asset-only allowlist with read-only trade request 20007; trading writes stay blocked.
 
 ## Verification receipt (2026-11-01)
@@ -58,8 +58,7 @@ asset-only allowlist with read-only trade request 20007; trading writes stay blo
 
 ## Remaining acceptance
 
-SDK-only trade callbacks still fail on the tested environment. The native backend
-now completes this deliverable; native positions/orders, actual trade events and
+SDK-only trade callbacks still fail on the tested environment. Fully native account snapshots now pass on the pinned build; actual trade events and
 real recovery interleavings are separate remaining capabilities. This does not
 claim replacement of the whole SDK. Native worker reuse is now implemented; MCP reuse is
 within one snapshot. Main working files remain untouched; the branch depends on
@@ -169,3 +168,57 @@ Private sanitized receipts remain under the existing recovery/five-areas directo
 qmtcli-100-snapshots-live.json, qmtcli-native-recovery-live.json and
 qmtcli-invalid-account-recovery-live.json. Real account values/IDs are never committed.
 Shared XtMiniQmt/miniquote remained responsive. Work stays in_review/unmerged.
+
+## Fully native positions/orders and snapshots (current extension)
+
+[K, static] Pinned XtQuantServer dispatch at 0xEF90 routes 20006 to order query and
+20008 to position query. Its response wrappers 0x11450/0x11490 send 476/328 bytes.
+Pinned OrderService_mini writers 0x11AAD0 and 0x11BD30 establish field offsets; the
+latter was newly decompiled from the existing database into the private research
+native-position-codec.c. Query handlers 0x13A7B0/0x13E890 establish the order-ID,
+server cancelable bit (+36), symbol filtering and explicit empty/error paths. The
+installed xttrader.py/xttype.py and actual SDK objects define canonical public fields.
+
+Implementation: native_records.py decodes only canonical public position/order
+fields with account/type, numeric and quantity validation. The existing reply
+collector now accepts kind/size/decoder parameters, preserving trade defaults and
+strict fragmentation/empty rules. One native operation validates the account's
+asset first; full snapshots then query positions, orders and trades with new wire
+sequences on the same worker. Only read requests 20006/20008 extend the allowlist.
+Server-side cancelable filtering is used; client status heuristics are not added.
+
+Public contract: positions/orders accept backend=native. account_snapshot and CLI
+account-snapshot accept backend=native to select all four sections and bypass SDK
+initialization (including inherited xtdc token). backend=sdk remains the default;
+asset_backend/trades_backend apply only to that legacy section-selection mode.
+The full-native meta annotates every section and native_generation; SDK event
+cursor fields remain distinct and have initial values in a native-only session.
+There is no native event subscription or atomic snapshot promise.
+
+An initial mapping of an extra avg_price field failed actual SDK comparison because
+that field is not exposed by this SDK. It was removed, not relabeled or guessed.
+The private negative receipt qmtcli-native-records-extra-field-rejected.json is
+retained. Final public fields match; no m_* duplicate SDK aliases are synthesized.
+
+| Acceptance | Verification | Result and limit |
+|---|---|---|
+| Canonical position/order fields and cancelable filtering | verify-qmtcli-native-records.py vs real SDK async queries | All returned canonical fields and identity sets matched for nonempty positions, orders and cancelable orders; no generated transaction |
+| Fully native public JSONL | verify-qmtcli-fully-native.py, Python 3.14.7 import guard forbids xtquant | 21 successful full snapshots plus invalid-account error and subsequent valid recovery; persistent generation on repeated same-account reads; clean EOF |
+| Public CLI | Same script, separate real positions/orders/account-snapshot CLI processes | Passed under the same SDK import guard; canonical fields compared against SDK reference |
+| Full snapshot contents | Same JSONL script | Assets compared to SDK within numeric tolerance; positions/orders every canonical field; native trades linked to orders by account/security/system ID and quantity/direction |
+| Wire/error contracts | test_native_records.py, test_native_account_cli.py plus existing trade/session regressions | Strict record sizes, account/type checks, nonfinite values, large int64 quantity, fragments, explicit synthetic empty lists, exact query sequence, invalid budget/filter rejection and MCP backend discovery |
+| Regression | uv run --no-sync --extra dev pytest -q; ruff check .; ruff native modules --select C901 | 400 passed; general lint and native complexity checks passed |
+| Live empty-account/events/reconnect/build coverage | No suitable empty account or real trade/disconnect induced | Unverified: real empty position/order lists, native push, broker reconnect, other account types, big QMT and other build fingerprints |
+
+Final live receipt qmtcli-fully-native-live.json binds six implementation source
+hashes; raw financial values stay only in test process memory. Latest 21 collection
+samples: min 43.920ms, median 46.269ms, max 274.936ms including cold/recovery samples.
+This is not a controlled before/after speedup measurement. Existing hybrid/SDK
+behavior remains covered by full regression. No new dependency, network server,
+trading write, QMT installation, or shared-client restart was introduced.
+
+Code Intel normal on the frozen extension tree passed (exit=0):
+C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/
+1793483704357-77740-core/run-complete.json. Parseable JSONL/examples and MCP backend
+schema checks passed. Final inventory found no owned qmtcli worker/server or IDA
+extractor remaining; both shared clients were responsive. Work remains in_review.

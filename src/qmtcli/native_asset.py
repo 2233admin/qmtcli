@@ -1,4 +1,4 @@
-"""Version-pinned, read-only MiniQMT asset/trade IPC without CPython SDK extensions.
+"""Version-pinned, read-only MiniQMT account IPC without CPython SDK extensions.
 
 The ringbuffer runtime is vendor C++, so native calls run only in a bounded child
 process. This module's codecs and parent adapter are usable without that library.
@@ -20,6 +20,8 @@ HEADER = struct.Struct("<QIBB2xQ")
 ACCOUNT = struct.Struct("<i24s")
 ASSET = struct.Struct("<i24s6d")
 CONNECT, ASSET_QUERY, TRADES_QUERY = 10001, 20005, 20007
+ORDERS_QUERY, POSITIONS_QUERY = 20006, 20008
+READ_OPERATIONS = {'asset', 'asset_trades', 'asset_positions', 'asset_orders', 'asset_cancelable_orders', 'snapshot'}
 WORKER_MARKER = "QMTCLI_NATIVE_RESULT:"
 PROFILES = {
     "ringbuffer.dll": "b40def1af839286baaf6b8bdcde7c88a0c555dbfb56d9bb3592661db84922c48",
@@ -39,11 +41,12 @@ def encode_account(account: str, account_type: str) -> bytes:
 
 
 def encode_frame(seq: int, kind: int, session: int, body: bytes, bucket_size: int = 512) -> bytes:
-    if kind not in (CONNECT, ASSET_QUERY, TRADES_QUERY):
+    if kind not in (CONNECT, ASSET_QUERY, TRADES_QUERY, ORDERS_QUERY, POSITIONS_QUERY):
         raise ValueError("native asset is read-only: request type is not allowed")
     if not 0 < seq < 2**64 or not 0 < session < 2**63:
         raise ValueError("invalid native sequence/session")
-    if len(body) != (12 if kind == CONNECT else ACCOUNT.size):
+    expected = {CONNECT: 12, ORDERS_QUERY: 37, POSITIONS_QUERY: 108}.get(kind, ACCOUNT.size)
+    if len(body) != expected:
         raise ValueError("invalid native request body length")
     packet = HEADER.pack(seq, kind, 0, 1, session) + body
     if len(packet) > bucket_size:
@@ -118,11 +121,11 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
         raise ValueError("native timeout must be between 0.1 and 60 seconds")
     data, bin_dir = _paths(path)
     _validate_runtime(bin_dir)
-    if operation == "asset_trades":
+    if operation not in READ_OPERATIONS:
+        raise ValueError("unsupported native read operation")
+    if operation != "asset":
         from qmtcli.native_trades import validate_trade_runtime
         validate_trade_runtime(bin_dir)
-    elif operation != "asset":
-        raise ValueError("unsupported native read operation")
     if not (data / "up_queue_xtquant").is_file():
         raise RuntimeError("MiniQMT native service queue is missing; start and log in to MiniQMT")
     # Exclusive creation establishes ownership: never overwrite or unlink an existing session.
@@ -169,7 +172,7 @@ def _parse_worker_output(output: str) -> dict:
 
 
 class _Ring:
-    """Private x64 primitive ABI adapter; lifetime is the one-shot worker process."""
+    """Private x64 primitive ABI adapter; lifetime is its owned worker process."""
 
     def __init__(self, library, path: Path, create: bool = False):
         import ctypes as c
@@ -283,10 +286,9 @@ class _WorkerConnection:
         raise TimeoutError("MiniQMT native connection timed out")
 
     def query(self, operation: str, timeout: float) -> dict:
-        if operation not in {"asset", "asset_trades"}:
-            raise ValueError("unsupported native read operation")
-        if not 0 < timeout <= 60 or not math.isfinite(timeout):
-            raise ValueError("invalid native response budget")
+        _validate_read(operation, timeout)
+        if operation not in {'asset', 'asset_trades'}:
+            return self._query_records(operation, timeout)
         asset_seq, trade_seq = self.sequence + 1, self.sequence + 2
         trades = self._trade_replies(operation, asset_seq, trade_seq)
         self.sequence = trade_seq if trades is not None else asset_seq
@@ -326,11 +328,56 @@ class _WorkerConnection:
             return decode_asset(body, self.account)
         return None
 
+    def _query_records(self, operation: str, timeout: float) -> dict:
+        from qmtcli.native_records import decode_order, decode_position
+        from qmtcli.native_trades import decode_trade, validate_trade_runtime
+        validate_trade_runtime(self.bin_dir)
+        deadline = time.monotonic() + timeout
+        result = {'asset': self.query('asset', timeout)}
+        plans = {
+            'positions': (POSITIONS_QUERY, 30004, 328, decode_position, self.account_raw + bytes(80)),
+            'orders': (ORDERS_QUERY, 30002, 476, decode_order,
+                       self.account_raw + struct.pack('<q?', 0, operation == 'asset_cancelable_orders')),
+            'trades': (TRADES_QUERY, 30003, 552, decode_trade, self.account_raw),
+        }
+        keys = ('positions', 'orders', 'trades') if operation == 'snapshot' else (
+            'positions' if operation == 'asset_positions' else 'orders',)
+        for key in keys:
+            result[key] = self._query_list(plans[key], result['asset'], deadline)
+        return result
+
+    def _query_list(self, plan: tuple, asset: dict, deadline: float) -> list:
+        from qmtcli.native_trades import TradeReplies
+        request_kind, reply_kind, size, decoder, body = plan
+        self.sequence += 1
+        replies = TradeReplies(self.account, self.session, trade_sequence=self.sequence,
+                               record_kind=reply_kind, record_size=size, decoder=decoder)
+        replies.asset = asset  # Obtained by this operation's successful account validation.
+        self.outgoing.send(encode_frame(self.sequence, request_kind, self.session, body), deadline)
+        for frame in self.reply.receive(deadline):
+            if frame[4] != self.session:
+                raise RuntimeError('native response belongs to another session')
+            if frame[0] != self.sequence:
+                continue
+            rows = replies.feed(frame)
+            if rows is not None:
+                return rows
+        raise TimeoutError('MiniQMT native record response timed out')
+
     def close(self) -> None:
         self.directory.close()
 
 
+def _validate_read(operation: str, timeout: float) -> None:
+    if operation not in READ_OPERATIONS:
+        raise ValueError("unsupported native read operation")
+    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or not 0 < timeout <= 60):
+        raise ValueError("invalid native response budget")
+
+
 def _worker(request: dict) -> dict:
+    _validate_read(request.get('operation', 'asset'), request['timeout'])
     deadline = time.monotonic() + float(request["timeout"])
     connection = _WorkerConnection(request)
     try:

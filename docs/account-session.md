@@ -68,8 +68,8 @@ SDK 推送会以独立 JSONL 行交错在响应之间：
 ```
 
 `asset_backend=native` 选择原生资产；`trades_backend=native` 选择原生成交，两者都选时
-共用同一个隔离原生 worker 和本地会话。持仓和委托仍用 SDK，所以完整快照的 server
-仍需运行在兼容 SDK 的 Python 中。单独的原生成交不需要 SDK：
+共用同一个隔离原生 worker 和本地会话。此分段选择模式的持仓、委托仍用 SDK，server
+需运行在兼容 SDK 的 Python 中。完整原生模式见下节；单独的原生成交也不需要 SDK：
 
 ```powershell
 qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT trades --backend native
@@ -85,7 +85,7 @@ qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT trades --backend nativ
 Agent 自身可运行 Python 3.14、Rust 或其他语言，通过 stdin/stdout 驱动一个兼容
 SDK 的 server 进程。无需将 SDK 导入 Agent 进程，也无需增加 TCP 服务。
 `asset --backend native` 和 `trades --backend native` 已在 Python 3.14 验证；
-持仓和委托的完整原生查询尚未实现。
+持仓、委托和完整快照现也支持原生查询，见下节。
 
 `account-snapshot` 可通过 CLI、RPC、server 和 MCP 发现；账户增量命令仅供 JSONL server。
 MCP 的单次 snapshot 在内部复用一次连接，当前不跨 MCP 工具调用保留会话。
@@ -115,3 +115,31 @@ JSONL server 为同一账户保留一个原生 worker、一次握手和一对队
 SDK 和原生世代各自保持不变；每次成交均与 SDK 委托关联核对。首个混合后端快照含
 原生 worker 初始化，其余九次使用原生资产与成交、SDK 持仓与委托。时间仅代表本机、
 本账户及当前版本的样本，详见 OpenSpec 凭据，不作为交易时段的延迟保证。
+
+## 四项全部使用原生接口
+
+```powershell
+python -m qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT account-snapshot --backend native
+python -m qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT positions --backend native
+python -m qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT orders --backend native --cancelable-only
+```
+
+```json
+{"id":1,"command":"account_snapshot","backend":"native","path":"D:\\QMT\\userdata_mini","account":"YOUR_ACCOUNT","timeout":5}
+```
+
+`backend=native` 对快照的四项都生效，优先于 `asset_backend/trades_backend` 的分段选择。
+先校验账户资产，再顺序读取持仓、委托、成交；同一 JSONL server 内复用一个原生 worker。
+Python 3.14 实测通过，整个查询进程禁止导入 xtquant 时也能工作；仍依赖已核验客户端
+随附的原生队列 DLL。默认 `backend=sdk` 和既有分段后端保持兼容。
+
+返回规范公开字段，不增加 SDK 内部 `m_*` 别名，不推测补充字段。委托 `cancelable_only`
+要求布尔值，原生路径直接发送服务端可撤过滤位，不根据客户端状态码重新猜测。
+476 字节委托、328 字节持仓均校验账户、有限数值和数量；列表使用实际结束标志与严格分片。
+仅在同一操作成功校验账户后接受服务的明确空列表回复；错误、残片、超时都不能变为空列表。
+
+`meta` 标注四项后端及 `native_generation`。原生连接世代与 SDK 事件世代独立；完全
+原生查询不订阅账户事件，此时 `generation/sequence_*` 的 SDK 事件游标为初始值。
+若同一 server 另外开了 SDK 账户订阅，它们仍只是 SDK 回调游标，不是原生事件序号。
+快照依然是顺序查询，`atomic=false`，不代表柜台原子状态。原生推送、真实断线恢复、
+大 QMT 和其他客户端版本尚未由本次实现验收；MCP 仍按工具调用释放连接。

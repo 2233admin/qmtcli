@@ -1,7 +1,7 @@
 # Account sessions, snapshots and event streaming
 
 Status: in_review. Full four-section JSONL acceptance now passes on the pinned
-MiniQMT build with explicit trades_backend=native. Not merged or registered on a
+MiniQMT build with explicit backend=native for all four sections; the earlier trades_backend=native hybrid mode is preserved. Not merged or registered on a
 task board. SDK-only trade replies and real event/reconnect interleavings remain
 separate unverified paths; do not label the entire SDK/software restored.
 

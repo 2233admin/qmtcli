@@ -9,8 +9,8 @@
 账户查询现支持**常驻会话复用、一次读取账户全貌及账户增量 JSONL 推送**。
 使用 `account-snapshot`，或在 `qmtcli server` 中调用 `account_subscribe` 后查询全貌。
 同账户重复查询复用连接，每次仍读取最新数据；[用法、恢复语义与 Python 版本边界](docs/account-session.md)。
-已验证的 MiniQMT 可用 `account-snapshot --trades-backend native` 获取完整四项数据；
-独立 `trades --backend native` 支持 Python 3.14，不导入 xtquant。
+已验证的 MiniQMT 可用 `account-snapshot --backend native` 原生读取完整四项数据；
+`asset/positions/orders/trades --backend native` 均支持 Python 3.14，不导入 xtquant。
 
 支持实验性的 **MiniQMT 原生资产查询**：
 `qmtcli --path <安装目录> --account <账号> asset --backend native`。

@@ -46,10 +46,12 @@ def decode_trade(raw: bytes, account: str) -> dict:
 
 
 class TradeReplies:
-    """Only the pinned empty-list branch after a valid asset reply means empty."""
+    """Account-validated list replies; defaults preserve the original trade codec."""
 
-    def __init__(self, account: str, session: int, asset_sequence: int = 2, trade_sequence: int = 3):
+    def __init__(self, account: str, session: int, asset_sequence: int = 2, trade_sequence: int = 3,
+                 *, record_kind: int = 30003, record_size: int = 552, decoder=decode_trade):
         self.account, self.session = account, session
+        self.record_kind, self.record_size, self.decoder = record_kind, record_size, decoder
         self.asset_sequence, self.trade_sequence = asset_sequence, trade_sequence
         self.asset: dict | None = None
         self.rows: list[dict] = []
@@ -67,37 +69,37 @@ class TradeReplies:
         if kind == 20000 and seq == self.asset_sequence:
             raise ValueError("native account validation failed")
         if seq != self.trade_sequence or action != 1 or self.asset is None:
-            raise ValueError("native trades require validated account and matching response")
+            raise ValueError("native list requires validated account and matching response")
         if kind == 20000:
             return self._finish_empty(body, last)
         if kind == 10009:
             body = self._fragment_body(body, last)
             if body is None:
                 return None
-        elif kind != 30003 or self.fragment:
-            raise ValueError("unexpected native trade response")
-        self.rows.append(decode_trade(body, self.account))
+        elif kind != self.record_kind or self.fragment:
+            raise ValueError("unexpected native list response")
+        self.rows.append(self.decoder(body, self.account))
         return self.rows if last else None
 
     def _finish_empty(self, body: bytes, last: bool) -> list[dict]:
         if (not last or self.rows or self.fragment or len(body) < 8
                 or struct.unpack_from("<q", body)[0] != -1):
-            raise ValueError("invalid native trade error/partial response")
+            raise ValueError("invalid native list error/partial response")
         # In this pinned service, -1 means either no account or no rows.
         # The same request's successful asset lookup rules out no account.
         return []
 
     def _fragment_body(self, body: bytes, last: bool) -> bytes | None:
         if len(body) < 38:
-            raise ValueError("truncated native trade fragment")
+            raise ValueError("truncated native list fragment")
         flag, original, total, size, offset = struct.unpack_from("<IIQQQ", body)
-        if (flag != 1 or original != 30003 or total != 552 or size == 0
+        if (flag != 1 or original != self.record_kind or total != self.record_size or size == 0
                 or offset != len(self.fragment) or offset + size > total or 38 + size > len(body)):
-            raise ValueError("invalid native trade fragment")
+            raise ValueError("invalid native list fragment")
         self.fragment.extend(body[38:38 + size])
         if len(self.fragment) < total:
             if last:
-                raise ValueError("premature last native trade fragment")
+                raise ValueError("premature last native list fragment")
             return None
         body = bytes(self.fragment)
         self.fragment.clear()

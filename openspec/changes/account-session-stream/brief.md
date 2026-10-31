@@ -29,3 +29,16 @@ Follow-up efficiency acceptance:
   memory/queue ownership is scoped to one active account per native backend.
 - Benchmark first and warm complete snapshots on the real JSONL boundary; report
   samples and counts without extrapolating to unmeasured p95 or whole-system speed.
+
+## Native positions/orders extension
+
+Authorized next slice: native read-only positions and orders, then fully native
+four-section snapshots on Python 3.14. Reuse the existing pinned queue/session path.
+Acceptance: public CLI/JSONL/MCP discovery, strict framing/empty/error behavior,
+SDK/native field-by-field comparison, server reuse and EOF cleanup. Keep backend
+selection explicit and preserve SDK defaults; no trading writes or invented fields.
+Sources: pinned XtQuantServer dispatch 0xEF90 (20006 order, 20008 position), response
+wrappers 0x11450 (476 bytes), 0x11490 (328 bytes); OrderService_mini query handlers
+0x13A7B0/0x13E890 and record writers 0x11AAD0/0x11BD30. Reverify live output before
+claiming codec correctness. Existing wheel is the owned ringbuffer runtime adapter;
+new custom code is limited to protocol codecs and routing, no replacement transport.

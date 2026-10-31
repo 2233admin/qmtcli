@@ -77,7 +77,7 @@ class NativeSession:
         self._process.stdin.flush()
 
     def query(self, operation: str, timeout: float = 5) -> dict:
-        if operation not in {"asset", "asset_trades"}:
+        if operation not in transport.READ_OPERATIONS:
             raise ValueError("unsupported native read operation")
         if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
                 or not math.isfinite(timeout) or not 0 < timeout <= 60):
@@ -86,7 +86,7 @@ class NativeSession:
             try:
                 data, bin_dir = transport._paths(self.path)
                 transport._validate_runtime(bin_dir)
-                if operation == "asset_trades":
+                if operation != "asset":
                     from qmtcli.native_trades import validate_trade_runtime
                     validate_trade_runtime(bin_dir)
                 if not (data / "up_queue_xtquant").is_file():
