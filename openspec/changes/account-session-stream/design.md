@@ -61,7 +61,7 @@ asset-only allowlist with read-only trade request 20007; trading writes stay blo
 SDK-only trade callbacks still fail on the tested environment. The native backend
 now completes this deliverable; native positions/orders, actual trade events and
 real recovery interleavings are separate remaining capabilities. This does not
-claim persistent native worker reuse or replacement of the whole SDK. MCP reuse is
+claim replacement of the whole SDK. Native worker reuse is now implemented; MCP reuse is
 within one snapshot. Main working files remain untouched; the branch depends on
 the still-unaccepted native asset base change.
 
@@ -90,8 +90,8 @@ the still-unaccepted native asset base change.
   security and order_sysid association, direction and volume bounds. An initial
   numeric-order-id join failed because both paths returned nonunique zero IDs;
   its private negative receipt is retained. Do not invent missing numeric IDs.
-- SDK start/connect/subscribe still reuse one account connection. Each snapshot's
-  native work uses a separate isolated child session; do not report one total
+- At the four-section milestone, SDK start/connect/subscribe reused one account connection. Each snapshot's
+  native work used a separate isolated child session (superseded below); do not report one total
   transport session for the hybrid path.
 - Full regression: 364 passed; ruff, whitespace checks and new native module C901
   complexity checks pass. Protocol phases were split after C901 found feed=14.
@@ -100,3 +100,45 @@ the still-unaccepted native asset base change.
 - Real account event activity was absent; no claim of real push/reconnect validation.
 - Updated Code Intel normal passed for the native trade extension; receipt directory
   1793472238440-42372-core under the same local artifact root.
+
+
+## Persistent native follow-up (2026-11-01)
+
+- NativeSession uses the standard-library subprocess/queue/threading ownership pattern,
+  without a dependency or network server. One child owns native C++ objects and queue
+  mappings for repeated sequential reads. Existing one-shot commands stay compatible.
+- Every operation allocates new application IDs and wire sequences. No result cache,
+  hidden replay or SDK fallback. Wrong IDs, EOF/crash, missing replies and protocol
+  failures close the child. A later request can start a new generation. Only the
+  Popen-owned worker tree may be terminated during bounded cleanup; never QMT.
+- Passive SDK delivery trace observed a trade request and three server replies of
+  552 bytes with the final flag. The Python native callback was never invoked while
+  the asset control callback arrived. Loss is localized to native SDK receive/dispatch
+  before Python; the exact internal binary defect is not established. Rebinding a
+  Python wrapper did not fix it. Evidence: qmtcli-sdk-trade-delivery.json.
+- Real Python 3.14 JSONL driver -> SDK-compatible server: ten complete snapshots,
+  SDK generation stable and native generation=1 throughout; every native trade
+  joined to SDK orders by account/security/system ID and passed direction/quantity
+  checks. EOF exit=0. First collection 304.796ms; subsequent nine 44.922–47.130ms.
+  First uses SDK asset/native trades; warm samples use native asset/trades. This is
+  a local sample, not a controlled speedup ratio or production percentile.
+- Private receipt qmtcli-persistent-native-live.json is under the existing research
+  recovery/five-areas directory and binds six implementation source hashes. It was
+  rerun after the final code change; final values supersede samples above if different.
+- Synthetic public JSONL tests check fresh responses, reuse, account switching and
+  EOF release. Wire tests check one handshake, advancing sequences and stale reply
+  rejection. Child crash/timeout/wrong ID tests verify failure without automatic replay;
+  forced cleanup test mocks taskkill and asserts only the owned PID is targeted.
+
+| Conclusion | Verification | Result and limit |
+|---|---|---|
+| Native reuse and fresh reads | pytest; real ten-snapshot JSONL script | Pass; pinned MiniQMT build/current account only |
+| Complete four-section snapshots | Real JSONL, native trade/SDK order cross-check | Pass; sequential, non-atomic; SDK required for positions/orders |
+| Real event/recovery consistency | No live trade/disconnect generated | Not verified; requires actual callbacks and controlled recovery observations |
+
+Main worktree user changes preserved. This branch remains in_review, unmerged,
+with principal acceptance and the native asset base acceptance outstanding.
+
+Final checks: 373 pytest tests passed; ruff general and C901 native-module checks
+passed. An initial Code Intel run detected edits made while it was consuming the
+source manifest and failed snapshot consistency (1793479842464-37784-core). The frozen-tree rerun passed: 1793479955478-2480-core/run-complete.json under the same artifact root.

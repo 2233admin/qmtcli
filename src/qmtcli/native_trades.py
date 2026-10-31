@@ -48,8 +48,9 @@ def decode_trade(raw: bytes, account: str) -> dict:
 class TradeReplies:
     """Only the pinned empty-list branch after a valid asset reply means empty."""
 
-    def __init__(self, account: str, session: int):
+    def __init__(self, account: str, session: int, asset_sequence: int = 2, trade_sequence: int = 3):
         self.account, self.session = account, session
+        self.asset_sequence, self.trade_sequence = asset_sequence, trade_sequence
         self.asset: dict | None = None
         self.rows: list[dict] = []
         self.fragment = bytearray()
@@ -58,14 +59,14 @@ class TradeReplies:
         seq, kind, action, last, source, body = frame
         if source != self.session:
             raise ValueError("native response belongs to another session")
-        if kind == 30001 and seq == 2 and action == 1 and last:
+        if kind == 30001 and seq == self.asset_sequence and action == 1 and last:
             if self.asset is not None:
                 raise ValueError("duplicate native account validation reply")
             self.asset = transport.decode_asset(body, self.account)
             return None
-        if kind == 20000 and seq == 2:
+        if kind == 20000 and seq == self.asset_sequence:
             raise ValueError("native account validation failed")
-        if seq != 3 or action != 1 or self.asset is None:
+        if seq != self.trade_sequence or action != 1 or self.asset is None:
             raise ValueError("native trades require validated account and matching response")
         if kind == 20000:
             return self._finish_empty(body, last)

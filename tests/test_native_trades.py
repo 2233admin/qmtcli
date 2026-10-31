@@ -150,3 +150,44 @@ def test_native_trades_cli_and_rpc_never_connect_sdk(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)[0]["traded_id"] == "T1"
     response = cli._handle_rpc_request({"id": 7, "command": "trades", "backend": "native", "path": "C:/QMT", "account": "A"})
     assert response["ok"] and response["id"] == 7 and response["data"][0]["traded_id"] == "T1"
+
+
+def test_worker_reuses_handshake_with_fresh_wire_sequences(monkeypatch, tmp_path):
+    import ctypes
+    from qmtcli import native_asset as native
+    from qmtcli import native_trades
+
+    (tmp_path / "down_queue_123").write_bytes(b"qmtcli-native-owner:owner")
+    monkeypatch.setattr(native, "_paths", lambda path: (tmp_path, tmp_path))
+    monkeypatch.setattr(native, "_validate_runtime", lambda path: None)
+    monkeypatch.setattr(native_trades, "validate_trade_runtime", lambda path: None)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **k: object(), raising=False)
+    monkeypatch.setattr(native.os, "add_dll_directory",
+                        lambda p: type("Directory", (), {"close": lambda s: None})(), raising=False)
+    frames = iter([
+        (1, 10002, 1, True, 123, struct.pack("<q", 123)),
+        (2, 30001, 1, True, 123, asset()), (3, 30003, 1, True, 123, trade("T1")),
+        (3, 30003, 1, True, 123, trade("STALE")),
+        (4, 30001, 1, True, 123, asset()), (5, 30003, 1, True, 123, trade("T2")),
+    ])
+    sent = []
+
+    class Ring:
+        def __init__(self, *a, **k):
+            pass
+
+        def receive(self, deadline):
+            yield from frames
+
+        def send(self, raw, deadline):
+            sent.append(native.decode_frame(raw)[:2])
+
+    monkeypatch.setattr(native, "_Ring", Ring)
+    connection = native._WorkerConnection({"path": str(tmp_path), "account": "A",
+                                          "session": 123, "owner": "owner", "timeout": 1})
+    try:
+        assert connection.query("asset_trades", 1)["trades"][0]["traded_id"] == "T1"
+        assert connection.query("asset_trades", 1)["trades"][0]["traded_id"] == "T2"
+        assert sent == [(1, 10001), (2, 20005), (3, 20007), (4, 20005), (5, 20007)]
+    finally:
+        connection.close()

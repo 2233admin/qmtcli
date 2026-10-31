@@ -1841,7 +1841,9 @@ def _handle_rpc_request(
     return response
 
 
-def _native_asset(request: dict[str, Any]) -> Any:
+def _native_asset(request: dict[str, Any], account_session: AccountSession | None = None) -> Any:
+    if account_session is not None:
+        return account_session.native_query(_account_connection(request), "asset", request.get("timeout", 5))
     from qmtcli.native_asset import query_native_asset
 
     path = request.get("path") or QMTGateway.resolve_path()
@@ -1853,7 +1855,13 @@ def _native_asset(request: dict[str, Any]) -> Any:
     )
 
 
-def _native_account(request: dict[str, Any], timeout: float | None = None) -> dict:
+def _native_account(
+    request: dict[str, Any], timeout: float | None = None,
+    account_session: AccountSession | None = None,
+) -> dict:
+    if account_session is not None:
+        return account_session.native_query(_account_connection(request), "asset_trades",
+                                            request.get("timeout", 5) if timeout is None else timeout)
     from qmtcli.native_trades import query_native_account
 
     path = request.get("path") or QMTGateway.resolve_path()
@@ -1876,9 +1884,9 @@ def _handle_rpc_data(
         raise ValueError("backend must be sdk or native")
     if backend == "native":
         if command == "asset":
-            return _native_asset(request)
+            return _native_asset(request, account_session)
         if command == "trades":
-            return _native_account(request)["trades"]
+            return _native_account(request, account_session=account_session)["trades"]
         raise ValueError("native backend currently supports asset and trades only")
     if xtdc:
         QMTGateway.init_xtdc(*xtdc)
@@ -2003,10 +2011,10 @@ def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -
                 raise TimeoutError("account snapshot response deadline exceeded")
             return left
 
-        native = _native_account(request, remaining()) if trades_backend == "native" else None
+        native = _native_account(request, remaining(), session) if trades_backend == "native" else None
         native_asset = native["asset"] if native is not None else None
         result = {
-            "asset": (native_asset if native is not None else _native_asset(request))
+            "asset": (native_asset if native is not None else _native_asset({**request, "timeout": remaining()}, session))
             if backend == "native" else gateway.query_asset(timeout=remaining()),
             "positions": gateway.query_positions(timeout=remaining()),
             "orders": gateway.query_orders(timeout=remaining()),
@@ -2025,6 +2033,8 @@ def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -
             "generation": cursor["generation"],
             "sequence_start": cursor["sequence"], "sequence_end": end["sequence"],
         }
+        if backend == "native" or native is not None:
+            result["meta"]["native_generation"] = session.native_generation
         return result
     finally:
         if owned:

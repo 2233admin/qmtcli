@@ -130,7 +130,7 @@ def test_events_disconnect_reconnect_and_unsubscribe(gateway, monkeypatch, capsy
 
 
 def test_native_asset_section_keeps_sdk_for_other_sections(gateway, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_native_asset", lambda request: {"native": True, "cash": 42})
+    monkeypatch.setattr(cli, "_native_asset", lambda request, session=None: {"native": True, "cash": 42})
     reply = serve(monkeypatch, capsys, [
         {"command": "account_snapshot", "account": "A", "asset_backend": "native"}
     ])[0]
@@ -204,7 +204,7 @@ def test_invalid_command_type_preserves_server_envelope(gateway, monkeypatch, ca
 def test_native_trade_snapshot_uses_verified_rows_and_shares_native_asset(gateway, monkeypatch, capsys):
     calls = []
 
-    def native(request, timeout=None):
+    def native(request, timeout=None, session=None):
         calls.append(timeout)
         return {"asset": {"cash": 42}, "trades": [{"traded_id": "NATIVE_T1"}]}
 
@@ -217,3 +217,39 @@ def test_native_trade_snapshot_uses_verified_rows_and_shares_native_asset(gatewa
     assert reply["data"]["trades"][0]["traded_id"] == "NATIVE_T1"
     assert reply["data"]["meta"]["trades_backend"] == "native"
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+def test_jsonl_native_reuse_fresh_data_account_switch_and_eof(gateway, monkeypatch, capsys, snapshot):
+    import qmtcli.native_session as native
+
+    class Worker:
+        instances = []
+        generation = 1
+
+        def __init__(self, path, account, account_type):
+            self.account, self.reads, self.closed = account, 0, False
+            self.instances.append(self)
+
+        def query(self, operation, timeout):
+            self.reads += 1
+            asset = {"account": self.account, "read": self.reads}
+            return {"asset": asset, "trades": []} if operation == "asset_trades" else asset
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(native, "NativeSession", Worker)
+    options = ({"command": "account_snapshot", "asset_backend": "native", "trades_backend": "native"}
+               if snapshot else {"command": "asset", "backend": "native"})
+    replies = serve(monkeypatch, capsys, [{**options, "account": a} for a in ["A", "A", "B"]])
+    assert all(r["ok"] for r in replies)
+    assets = [r["data"]["asset"] if snapshot else r["data"] for r in replies]
+    assert assets == [{"account": "A", "read": 1}, {"account": "A", "read": 2},
+                      {"account": "B", "read": 1}]
+    assert len(Worker.instances) == 2 and all(w.closed for w in Worker.instances)
+    if snapshot:
+        assert all(r["data"]["meta"]["native_generation"] == 1 for r in replies)
+        assert len(gateway.instances) == 2
+    else:
+        assert not gateway.instances

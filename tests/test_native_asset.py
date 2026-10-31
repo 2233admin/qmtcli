@@ -241,6 +241,8 @@ def test_native_stdio_request_ignores_inherited_data_token(transport, monkeypatc
     monkeypatch.setenv("QMTCLI_XTDC_TOKEN", "not-needed-for-assets")
     monkeypatch.setattr(QMTGateway, "init_xtdc", lambda *a: pytest.fail("SDK initialized"))
     monkeypatch.setattr(native, "query_native_asset", lambda *a: {"cash": 0.0})
+    from qmtcli.account_session import AccountSession
+    monkeypatch.setattr(AccountSession, "native_query", lambda *a: {"cash": 0.0})
     payload = {"command": "asset", "backend": "native", "account": "123456",
                "path": "C:/qmt/userdata_mini"}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload) + "\n"))
@@ -266,6 +268,8 @@ def test_jsonl_defers_sdk_token_until_non_native_request(monkeypatch, capsys):
         return {"cash": 0.0}
 
     monkeypatch.setattr(native, "query_native_asset", query)
+    from qmtcli.account_session import AccountSession
+    monkeypatch.setattr(AccountSession, "native_query", query)
     native_request = {"command": "asset", "backend": "native", "account": "123456",
                       "path": "C:/qmt/userdata_mini"}
     monkeypatch.setattr(sys, "stdin", io.StringIO(

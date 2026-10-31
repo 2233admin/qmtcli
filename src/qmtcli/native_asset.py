@@ -95,6 +95,22 @@ def query_native_asset(path: str, account: str, account_type: str = "STOCK", tim
     return _query_native(path, account, account_type, timeout, operation="asset")
 
 
+def _reserve_reply(data: Path) -> tuple[int, str, Path]:
+    session = secrets.randbelow(2**31 - 1) + 1
+    reply = data / f"down_queue_{session}"
+    owner = secrets.token_hex(16)
+    with reply.open("xb") as reservation:
+        reservation.write(("qmtcli-native-owner:" + owner).encode("ascii"))
+    return session, owner, reply
+
+
+def _remove_reply(reply: Path) -> None:
+    try:
+        reply.unlink()
+    except (PermissionError, FileNotFoundError):
+        pass  # Broker mapping can outlive the terminated worker briefly.
+
+
 def _query_native(path: str, account: str, account_type: str, timeout: float, operation: str) -> dict:
     encode_account(account, account_type)
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
@@ -109,12 +125,8 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
         raise ValueError("unsupported native read operation")
     if not (data / "up_queue_xtquant").is_file():
         raise RuntimeError("MiniQMT native service queue is missing; start and log in to MiniQMT")
-    session = secrets.randbelow(2**31 - 1) + 1
-    reply = data / f"down_queue_{session}"
-    owner = secrets.token_hex(16)
     # Exclusive creation establishes ownership: never overwrite or unlink an existing session.
-    with reply.open("xb") as reservation:
-        reservation.write(("qmtcli-native-owner:" + owner).encode("ascii"))
+    session, owner, reply = _reserve_reply(data)
     try:
         env = os.environ.copy()
         package_root = str(Path(__file__).resolve().parent.parent)
@@ -137,11 +149,7 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
             raise RuntimeError(response.get("error", "native asset query failed"))
         return response["data"]
     finally:
-        try:
-            reply.unlink()
-        except (PermissionError, FileNotFoundError):
-            # The broker can retain its writer mapping until it observes worker exit.
-            pass
+        _remove_reply(reply)
 
 
 def _parse_worker_output(output: str) -> dict:
@@ -239,63 +247,121 @@ class _Ring:
                 time.sleep(0.001)
 
 
-def _worker(request: dict) -> dict:
-    import ctypes as c
+class _WorkerConnection:
+    """One native queue pair. Only its child process owns the C++ objects."""
 
-    data, bin_dir = _paths(request["path"])
-    _validate_runtime(bin_dir)
-    operation = request.get("operation", "asset")
-    trades = None
-    if operation == "asset_trades":
+    def __init__(self, request: dict):
+        import ctypes as c
+
+        data, self.bin_dir = _paths(request["path"])
+        _validate_runtime(self.bin_dir)
+        self.account, self.session = request["account"], int(request["session"])
+        self.account_raw = encode_account(self.account, "STOCK")
+        deadline = time.monotonic() + float(request["timeout"])
+        reserved_reply = data / f"down_queue_{self.session}"
+        marker = ("qmtcli-native-owner:" + request["owner"]).encode("ascii")
+        if reserved_reply.stat().st_size != len(marker) or reserved_reply.read_bytes() != marker:
+            raise RuntimeError("native reply queue is not owned by this worker")
+        self.directory = os.add_dll_directory(str(self.bin_dir))
+        self.library = c.WinDLL(str(self.bin_dir / "ringbuffer.dll"), winmode=0x1100)
+        self.reply = _Ring(self.library, reserved_reply, create=True)
+        self.outgoing = _Ring(self.library, data / "up_queue_xtquant")
+        self.sequence = 1
+        self.outgoing.send(encode_frame(1, CONNECT, self.session,
+                                       struct.pack("<qi", self.session, os.getpid())), deadline)
+        self._connect(deadline)
+
+    def _connect(self, deadline: float) -> None:
+        for seq, kind, action, last, source, body in self.reply.receive(deadline):
+            if source != self.session or kind == 20000:
+                raise RuntimeError("MiniQMT rejected the native connection")
+            if kind == 10002 and seq == 1:
+                if (action != 1 or not last or len(body) < 8
+                        or struct.unpack_from("<q", body)[0] != self.session):
+                    raise RuntimeError("invalid native connection acknowledgement")
+                return
+        raise TimeoutError("MiniQMT native connection timed out")
+
+    def query(self, operation: str, timeout: float) -> dict:
+        if operation not in {"asset", "asset_trades"}:
+            raise ValueError("unsupported native read operation")
+        if not 0 < timeout <= 60 or not math.isfinite(timeout):
+            raise ValueError("invalid native response budget")
+        asset_seq, trade_seq = self.sequence + 1, self.sequence + 2
+        trades = self._trade_replies(operation, asset_seq, trade_seq)
+        self.sequence = trade_seq if trades is not None else asset_seq
+        deadline = time.monotonic() + timeout
+        self.outgoing.send(encode_frame(asset_seq, ASSET_QUERY, self.session, self.account_raw), deadline)
+        for frame in self.reply.receive(deadline):
+            seq, kind, action, last, source, body = frame
+            if source != self.session:
+                raise RuntimeError("native response belongs to another session")
+            if seq not in (asset_seq, trade_seq):
+                continue
+            if trades is not None:
+                rows = trades.feed(frame)
+                if rows is not None:
+                    return {"asset": trades.asset, "trades": rows}
+                if seq == asset_seq and kind == 30001:
+                    self.outgoing.send(encode_frame(trade_seq, TRADES_QUERY, self.session, self.account_raw), deadline)
+            else:
+                result = self._asset_reply(frame, asset_seq)
+                if result is not None:
+                    return result
+        kind = "account" if trades is not None else "asset"
+        raise TimeoutError(f"MiniQMT native {kind} response timed out")
+
+    def _trade_replies(self, operation: str, asset_seq: int, trade_seq: int):
+        if operation != "asset_trades":
+            return None
         from qmtcli.native_trades import TradeReplies, validate_trade_runtime
-        validate_trade_runtime(bin_dir)
-        trades = TradeReplies(request["account"], int(request["session"]))
-    elif operation != "asset":
-        raise ValueError("unsupported native read operation")
-    account = request["account"]
-    account_raw = encode_account(account, "STOCK")
-    session = int(request["session"])
-    deadline = time.monotonic() + float(request["timeout"])
-    reserved_reply = data / f"down_queue_{session}"
-    marker = ("qmtcli-native-owner:" + request["owner"]).encode("ascii")
-    # Check the parent's reservation before the native factory can truncate a
-    # file. A directly invoked worker must not attach to an existing SDK session.
-    if reserved_reply.stat().st_size != len(marker) or reserved_reply.read_bytes() != marker:
-        raise RuntimeError("native reply queue is not owned by this worker")
-    directory = os.add_dll_directory(str(bin_dir))
-    library = c.WinDLL(str(bin_dir / "ringbuffer.dll"), winmode=0x1100)
-    reply = _Ring(library, reserved_reply, create=True)
-    outgoing = _Ring(library, data / "up_queue_xtquant")
-    outgoing.send(encode_frame(1, CONNECT, session, struct.pack("<qi", session, os.getpid())), deadline)
-    connected = False
-    for seq, kind, action, last, source, body in reply.receive(deadline):
-        if source != session:
-            raise RuntimeError("native response belongs to another session")
-        if trades is not None and connected and seq in (2, 3):
-            rows = trades.feed((seq, kind, action, last, source, body))
-            if rows is not None:
-                directory.close()
-                return {"asset": trades.asset, "trades": rows}
-            if seq == 2 and kind == 30001:
-                outgoing.send(encode_frame(3, TRADES_QUERY, session, account_raw), deadline)
-            continue
+        validate_trade_runtime(self.bin_dir)
+        return TradeReplies(self.account, self.session, asset_seq, trade_seq)
+
+    def _asset_reply(self, frame: tuple, sequence: int) -> dict | None:
+        seq, kind, action, last, source, body = frame
         if kind == 20000:
-            raise RuntimeError("MiniQMT rejected the native connection or query")
-        if kind == 10002 and seq == 1 and not connected:
-            if (action != 1 or not last or len(body) < 8
-                    or struct.unpack_from("<q", body)[0] != session):
-                raise RuntimeError("invalid native connection acknowledgement")
-            connected = True
-            outgoing.send(encode_frame(2, ASSET_QUERY, session, account_raw), deadline)
-        elif kind == 30001 and seq == 2 and connected and action == 1 and last:
-            result = decode_asset(body, account)
-            directory.close()
-            return result
-    kind = "account" if trades is not None else "asset"
-    raise TimeoutError(f"MiniQMT native {kind} response timed out")
+            raise RuntimeError("MiniQMT rejected the native asset query")
+        if seq == sequence and kind == 30001 and action == 1 and last:
+            return decode_asset(body, self.account)
+        return None
+
+    def close(self) -> None:
+        self.directory.close()
+
+
+def _worker(request: dict) -> dict:
+    deadline = time.monotonic() + float(request["timeout"])
+    connection = _WorkerConnection(request)
+    try:
+        return connection.query(request.get("operation", "asset"), max(0.001, deadline - time.monotonic()))
+    finally:
+        connection.close()
+
+
+def _serve_worker() -> None:
+    connection = None
+    request_id = None
+    try:
+        connection = _WorkerConnection(json.loads(sys.stdin.readline()))
+        print(WORKER_MARKER + json.dumps({"ready": True}), flush=True)
+        for line in sys.stdin:
+            request = json.loads(line)
+            request_id = request["id"]
+            value = connection.query(request["operation"], float(request["timeout"]))
+            print(WORKER_MARKER + json.dumps({"id": request_id, "ok": True, "data": value}), flush=True)
+    except Exception as error:
+        print(WORKER_MARKER + json.dumps({"id": request_id, "ready": False,
+                                         "ok": False, "error": str(error)}), flush=True)
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 if __name__ == "__main__":
+    if "--server" in sys.argv:
+        _serve_worker()
+        sys.exit(0)
     try:
         value = _worker(json.load(sys.stdin))
         print(WORKER_MARKER + json.dumps({"ok": True, "data": value}, ensure_ascii=False))

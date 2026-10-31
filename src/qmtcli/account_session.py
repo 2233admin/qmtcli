@@ -1,4 +1,4 @@
-"""One request-owned SDK session, with callback-only invalidation/publication."""
+"""Request-owned SDK/native sessions, with callback-only invalidation/publication."""
 
 from __future__ import annotations
 
@@ -21,6 +21,23 @@ class AccountSession:
         self._generation = 0
         self._sequence = 0
         self._streaming = False
+        self._native = None
+        self._native_key = None
+
+    @property
+    def native_generation(self) -> int:
+        return self._native.generation if self._native is not None else 0
+
+    def native_query(self, connection: QMTConnection, operation: str, timeout: float) -> dict:
+        from qmtcli.native_session import NativeSession
+
+        key = (connection.path, connection.account_id, connection.account_type)
+        if self._native is None or self._native_key != key:
+            if self._native is not None:
+                self._native.close()
+            self._native = NativeSession(*key)
+            self._native_key = key
+        return self._native.query(operation, timeout)
 
     def get(self, connection: QMTConnection, subscribe: bool = True) -> QMTGateway:
         key = (connection.path, connection.account_id, connection.account_type, subscribe)
@@ -92,5 +109,11 @@ class AccountSession:
             self._key = None
             self._streaming = False
             self._generation += 1
-        if gateway is not None:
-            gateway.close()
+            native, self._native = self._native, None
+            self._native_key = None
+        try:
+            if native is not None:
+                native.close()
+        finally:
+            if gateway is not None:
+                gateway.close()

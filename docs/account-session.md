@@ -24,7 +24,7 @@ RPC / JSONL：
 ```
 
 成功响应 `data` 包含 `asset`、`positions`、`orders`、`trades` 和 `meta`。
-一次请求、一个连接、四次顺序 SDK 查询；不是柜台提供的原子快照。
+SDK 后端使用一次请求、一个连接、四次顺序查询；原生后端使用独立连接。不是柜台提供的原子快照。
 `meta.atomic=false`，同时给出 `started_at/finished_at/duration_ms`、`generation` 和
 `sequence_start/sequence_end`。查询异常、缺失结果或收集期间断线会返回错误；合法空列表保留为空。
 `duration_ms` 是四项收集时长，不包括此前建连耗时。
@@ -80,8 +80,7 @@ qmtcli --path D:\QMT\userdata_mini --account YOUR_ACCOUNT trades --backend nativ
 超时、账户错误、残缺分片和未知版本会报错，不用空列表掩盖失败。
 数字 `order_id` 可能为0，不能据此把所有成交关联到同一委托。核对委托时使用账户、
 证券和柜台 `order_sysid`；区分成交还需 `traded_id`，不自行补造缺失编号。
-新增服务指纹检查包括 `OrderService_mini.dll`。原生 worker 仍每个快照启动一次；
-SDK 连接复用的收益不代表已经实现常驻原生 worker。
+新增服务指纹检查包括 `OrderService_mini.dll`。
 
 Agent 自身可运行 Python 3.14、Rust 或其他语言，通过 stdin/stdout 驱动一个兼容
 SDK 的 server 进程。无需将 SDK 导入 Agent 进程，也无需增加 TCP 服务。
@@ -102,3 +101,17 @@ MCP 的单次 snapshot 在内部复用一次连接，当前不跨 MCP 工具调�
 现已连续两次返回四项数据，并完成订阅、退订和 EOF 退出。两种资产后端组合均验证通过。
 这不等于 SDK 成交回调本身已修复，也不等于真实成交/断线增量事件全部验收。
 实际返回的成交还与 SDK 委托逐条核对了证券、方向、系统号及数量范围。
+
+
+## 常驻原生连接
+
+JSONL server 为同一账户保留一个原生 worker、一次握手和一对队列；SDK 仍保留自己的
+连接。每个原生请求分配新的请求编号和线协议序号，重新查询；不会返回上次结果。
+`meta.native_generation` 表示当前原生 worker 的世代。账户切换或 EOF 关闭所属 worker；
+超时、错误回复和进程崩溃会关闭故障 worker，当前请求报错，后续请求可以重新建连，
+不会自动重放失败请求。单次 CLI/RPC 和 MCP 调用结束后仍释放连接。
+
+2026-11-01 实机由 Python 3.14 驱动兼容 SDK 的 JSONL server，连续十次四项快照均成功，
+SDK 和原生世代各自保持不变；每次成交均与 SDK 委托关联核对。首个混合后端快照含
+原生 worker 初始化，其余九次使用原生资产与成交、SDK 持仓与委托。时间仅代表本机、
+本账户及当前版本的样本，详见 OpenSpec 凭据，不作为交易时段的延迟保证。
