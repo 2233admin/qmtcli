@@ -538,3 +538,35 @@ Only research scripts/private receipts and these OpenSpec notes changed in this
 slice; unchanged production Rust/Python suites were not rerun as a substitute for
 the actual idle experiment. Overall state remains in_review, no new tracker/KB
 copy, remote push or merge. Local docs commit preserves the verified finding.
+
+## User-opened full QMT: actual external-service gate — 2026-11-01
+
+User opened full QMT and authorized read-only testing. Current PID 15856 is
+XtItClient.exe at the installed bin.x64 path, independently verified using Windows
+QueryFullProcessImageName with PROCESS_QUERY_LIMITED_INFORMATION. Process has a
+responsive window. Regular module enumeration fails for this process: loaded
+state is UNKNOWN, not false. Earlier automatic loaded=false observations from an
+empty module collection are superseded. No process privileges were changed.
+
+| Conclusion | Actual evidence | Result and limit |
+|---|---|---|
+| Full client is open | Limited image query, process metadata and Orca list-windows | Installed XtItClient identified, not MiniQMT. UI title/account identifiers are excluded from durable receipts. Bundled node/sky kernel fails sandbox initialization; installed Orca provider can identify window, but its screenshots remain occluded even after restore. No UI clicks or authentication actions performed. |
+| Existing Rust Mini quote route is unavailable in this full-client-only state | Actual qmt-native-quote-experiment.exe root + two symbols | Exit 1, ok=false, Windows error 10061. No service at the previously verified Mini quote port 58610. Current full-client process listens on 58600; that endpoint is not assumed to be quote RPC and was not sent guessed messages. |
+| Expected Big native queues do not exist | Path checks distinguish ObjectNotFound from denied inspection | userdata/up_queue_xtquant, up_queue_win_xtquant and winsemaphore_flag_xtquant absent. No fake queue created and no account query sent. |
+| Latest startup logs deny external API service | probe-big-qmt-live.py; private recovery/big-qmt/live-probe-20261101.json | Capability log at 17:37:06 has mdl_auth_xtquant=0; at 17:37:08 logs exactly "The XtQuantServer is not allowed to start." Current process began 17:36:53. Static loadFromConfig 0xCD8F0 calls checkModule(mdl_auth/mdl_auth_xtquant); false branch emits that exact message, true branch calls startQuantServer 0xE5290. No capability/authentication/configuration modification. |
+
+This is a real negative connectivity result, not a missing-login assumption or
+proof of a Rust decoding/Python-version defect. The module gate concerns this
+external service; it does not establish that every internal client data interface
+is unavailable. Static candidate export surface (Formula runStrategy 0x1632A0,
+initPythonList 0xEC930) is recorded privately, but running an existing strategy
+could have trading side effects, so no such function was invoked. Legitimate
+internal read-only access still requires separate investigation/acceptance.
+
+Private scripts/receipts: probe-big-qmt-live.py, inspect-big-strategy-surface.py,
+live-probe-20261101.json, internal-strategy-export-surface.json and updated
+recovery/big-qmt/README.md. Only capability booleans and exact service-denial
+messages are persisted, not raw authorization/account logs. Production source
+is unchanged; no unit-suite rerun substituted for the real failed connection.
+User's running full client is left open, no server checks were bypassed. Overall
+state remains in_review, Big account/query completion unchecked, no remote push.

@@ -43,3 +43,6 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Observe native keepalive headers/CRC and identify the pinned net.dll sender.
 - [x] One real connection: 10 queries, 25s/65s idle controls, subsequent query succeeds without guessed acknowledgement.
 - [ ] Implement/accept Rust persistent quote ownership and validated control-frame routing; current Rust reader is still strict.
+
+- [x] Big QMT real process/window confirmed; native endpoint attempt and sanitized startup gate evidence recorded.
+- [ ] Big QMT actual account/query acceptance: external XtQuant service not started (logged mdl_auth_xtquant=0); normal internal read-only route remains unverified.
