@@ -39,3 +39,7 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Two-stock official SDK control, real SH/SZ 51,196-record read and exact vendor BSON comparison.
 - [x] Ten Rust tests, Clippy/fmt, existing 427 Python tests and Code Intel structural gate.
 - [ ] Strict market-wide SDK JSON absolute-float parity: six values exceed 1e-12 by one ULP; retained as a failed extra check.
+
+- [x] Observe native keepalive headers/CRC and identify the pinned net.dll sender.
+- [x] One real connection: 10 queries, 25s/65s idle controls, subsequent query succeeds without guessed acknowledgement.
+- [ ] Implement/accept Rust persistent quote ownership and validated control-frame routing; current Rust reader is still strict.

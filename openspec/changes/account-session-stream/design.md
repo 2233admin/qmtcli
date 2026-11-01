@@ -506,3 +506,35 @@ No new external tracker, duplicate KB state, remote push or merge. Durable contr
 limits, wheels and failure evidence stay in this OpenSpec and the experiment README.
 No shared process was restarted or stopped; generated targets remain ignored and
 are retained so the user can run the verified executable. Main's dirty files remain.
+
+## Behavior-first transport research: actual keepalive — 2026-11-01
+
+User directed research against the software itself. This slice used own native
+socket connections and existing pefile/Capstone for bounded static inspection;
+no official endpoint assumptions, SDK calls, shared-process hooks/restarts, data
+downloads or trading writes. Production Python/Rust code was not modified.
+
+| Conclusion | Evidence | Result / limit |
+|---|---|---|
+| A real control frame previously rejected by strict readers is kind=1 | probe-native-quote-idle.py; native-quote-idle-observation.json and -65s.json | Authenticated real caller PID, ten same-socket two-stock reads, then passive idle. Two control frames over 25s, nine over 65s; kind=1, observed flags=0x2e40, sizes 16–19, all CRCs valid. |
+| Native sender identifies these as keepalive | inspect-net-header.py; net-header-static.json against pinned net.dll | Export doSendKeepAlive RVA 0x447E0 passes kind=1 at 0x448C0 to NetPackageHeader constructor 0x4D4F0. Constructor stores dx into kind at +0x10 (0x4D51B). Sender then calls encode 0x4D870 at 0x4492D. Earlier kind=12 heartbeat hypothesis is rejected; its decoder branch is not evidence of heartbeat type. |
+| Sequence bits share the flags word | Header constructor/decode static instructions | Constructor takes seq>>32 and stores its upper nibble with feature flags; decode reconstructs high sequence bits. Observed 0x2e40 must not be hardcoded as the only keepalive flag value. Sender masks sequence to 36 bits at 0x448A9/0x448B3. Normalizing the four sequence bits yields 0x2040 for this observation. |
+| Socket can survive idle without invented ACK | Both live probes | Same socket: 10 queries, 25s or 65s passive reading, query 11 succeeds; one auth, no control packets sent by probe. Server timing varies, so these samples do not establish a fixed heartbeat interval, infinite connection lifetime or disconnect recovery. |
+| Original unsupported download frame is not conclusively identified | Original maintenance probe retained no failing header | Kind=1 appears around 4s and would fail that old whitelist, consistent with the old failure timing; this is an inference, not proof that the exact old frame was identical. The new control frame itself is directly observed and statically identified. |
+
+Private evidence is under recovery/five-areas in the existing research root.
+The probe records headers, CRC booleans and body hashes only, not arbitrary payloads.
+Owned sockets close in finally; both shared MiniQMT processes remain untouched.
+
+This removes a concrete uncertainty for Rust connection reuse. It does not claim
+Rust reuse is implemented: current wire::read_reply requires a matching kind=3 RPC
+reply and will reject an interleaved kind=1 control frame. Next implementation
+must validate control framing/CRC before routing it separately from request
+sequences; subscription kind=4 notifications remain a distinct, unaccepted path.
+Keep the existing strict failures for unknown/corrupt frames and add regression
+fixtures before accepting a retained Rust socket. No broad SDK/software completion.
+
+Only research scripts/private receipts and these OpenSpec notes changed in this
+slice; unchanged production Rust/Python suites were not rerun as a substitute for
+the actual idle experiment. Overall state remains in_review, no new tracker/KB
+copy, remote push or merge. Local docs commit preserves the verified finding.

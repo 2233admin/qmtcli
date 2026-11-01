@@ -76,3 +76,13 @@ libraries fit the exact serialization/compression/hash boundaries and avoid
 Python ABI dependencies. The noncanonical named BSON array needs only the same
 small container-tag adaptation already validated in the Python implementation.
 No history, subscription, account queries, trading writes or speedup claim.
+
+## Client-behavior research: keepalive and idle reuse
+
+User directed further development from the installed client's actual behavior.
+Investigate the previously unsupported frame using own connections and pinned
+static code, rather than assuming a published business API specifies transport.
+Acceptance for this research slice: capture bounded header/CRC metadata, identify
+the native sender, test a connection across multiple idle control frames and keep
+the result distinct from an implemented Rust persistent-session API. No shared
+process hooks/restarts, PID spoofing, new downloads or trading actions.
