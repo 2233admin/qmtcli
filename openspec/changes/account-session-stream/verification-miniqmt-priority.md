@@ -55,6 +55,22 @@ Its login callback logs `status=23` and the exact message
 server response and any local status translation have not been independently
 decoded, so do not claim that 23 is necessarily the server's original error code.
 
+Subsequent offline extraction from an owned copy of User_mini.i64 resolves the
+translation: `TC::CProxyClient::onLogin`, RVA 0x52c50, reads the response BSON
+`result` and switches on it. Result 8 uses the fixed text `密码错误` and emits
+local status 23. Result 0x72 (114) reads response `reason` and also emits local
+status 23. The observed long permission message matches the reason-driven path,
+not the fixed password message. Result 114 is therefore inferred from the mapped
+message; no raw live login response was captured. The permission message is not
+constructed by Rust QMTCLI. This does not identify why the backend rejected the
+login: entitlement, expiry, policy or device checks require additional evidence.
+The result-114 branch itself has no CPU identifier test, so the earlier hardware
+observation must remain a clue rather than the claimed cause.
+Extraction and pseudocode: research `recovery/mini-login-permission/summary.json`,
+`00052c50.c` (result parse around line 670; result-114 branch around line 3711),
+`0004a9b0.c`. The owned IDA process completed; the installed DLL was not modified
+or attached to, and no login request was replayed.
+
 Same login identity (compared in memory, not persisted), same configured endpoint,
 same reported client version 2.0.24.0: Oct 29 04:30:36 records status 9 and loads
 permissions; Nov 1 17:31/17:33/17:34 records status 23; Nov 2 05:51/05:52 repeats
