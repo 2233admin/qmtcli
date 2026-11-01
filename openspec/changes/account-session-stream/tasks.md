@@ -49,3 +49,7 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [ ] Big QMT actual account/query acceptance: external XtQuant service not started (logged mdl_auth_xtquant=0); normal internal read-only route remains unverified.
 
 - [x] Offline Rust session slice: 18 Rust tests, 427 Python tests, build, Clippy/fmt and structural gate pass.
+
+- [x] Performance: five alternating replay blocks of Rust release/native Python 3.15.2/SDK Python 3.11.16; startup, retained query, JSON and decoder components separated.
+- [x] Validate 10,115 replay queries with zero request errors, expected per-block counts, independent partial-frame/CRC negative controls and normal owned-process cleanup.
+- [ ] Same-condition real QMT performance, retained Rust live heartbeat/recovery and agent end-to-end latency acceptance.

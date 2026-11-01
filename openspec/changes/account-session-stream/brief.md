@@ -97,3 +97,17 @@ explicit new connect, never automatic replay. Validate on owned loopback fixture
 with no real broker/login dependency: heartbeat CRC/flags/padding, fresh results,
 single authentication, peer EOF, timeout and malformed response cleanup. Actual
 retained Rust connection against Mini/Big QMT remains separate live acceptance.
+
+## Performance comparison under unavailable live quote service
+
+User requested measured performance. Compare Rust release, native Python 3.15 and
+the installed SDK in its compatible runtime against one owned loopback replay
+fixture; do not restart QMT or infer counter latency from replay numbers. Use
+identical synthetic tick-shaped 2/1000-record payloads. Time retained requests,
+requests plus JSON rendering and decoder components separately; process startup
+is a distinct warm-filesystem/process-cold measurement. Validate output counts,
+field/depth/timestamp checks and expected server request counts, recording errors.
+At least five alternating blocks per case, median/range, shared-host load, client
+CPU/memory and separate untimed profile. Use existing hyperfine and psutil where
+appropriate; custom adapters only connect actual APIs to the common fixture.
+No real SDK-vs-native QMT speedup claim while port 58610 is unavailable.

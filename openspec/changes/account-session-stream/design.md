@@ -622,3 +622,28 @@ remain unchecked. No running QMT process, login flow, capability or cache was
 modified. Temporary peers were test-only; generated targets stay ignored and are
 retained as runnable artifacts. Main checkout's unrelated dirty files remain.
 Keep OpenSpec in_review; no tracker/KB duplication, remote push or merge.
+
+## Performance replay receipt, 2026-11-01
+
+User requested a performance comparison while the real quote endpoint is absent.
+See [the measured report](../../../docs/quote-performance.md) for final medians,
+ranges, boundaries, correctness and local raw artifacts. No production backend
+change: only a Rust benchmark example and this research receipt. The primary
+1000-record query-plus-JSON medians are 14.93 / 18.95 / 30.18 ms for Rust release /
+native Python 3.15.2 / installed SDK on Python 3.11.16. Five alternating blocks;
+small requests have overlapping variation. These are owned loopback synthetic
+replay results, not QMT/counter latency or a production adoption decision.
+
+Closeout: retain existing OpenSpec in_review; no new tracker or duplicate KB truth.
+Local benchmark artifacts include the initial close-classification failure and
+the profiler-import baseline, distinct from the final run. All owned benchmark
+workers exited normally. No global instruction changes or shared process cleanup.
+
+Verification: `cargo test --locked --all-targets -j 4` passed 18 library tests
+and 7 reused wire tests in the benchmark example; Clippy all-targets with warnings
+denied and cargo fmt check passed. Shared-venv `ruff check .` passed. The prior
+427-test Python result remains the baseline; Python production code did not change
+and that suite was not rerun for this benchmark-only example/docs slice.
+Code Intel normal completed PASS on frozen source:
+`C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793538852150-96940-core/run-complete.json`.
+Only this documentation receipt was adjusted afterward. `git diff --check` passes.
