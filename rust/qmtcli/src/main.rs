@@ -8,6 +8,7 @@ fn run() -> Result<bool> {
         .map(|s| s.into_string().map_err(|_| "arguments must be Unicode"))
         .collect::<std::result::Result<Vec<_>, _>>()?;
     match args.first().map(String::as_str) {
+        Some("--internal-account-worker") if args.len() == 1 => Ok(qmt_trade::run_worker().is_ok()),
         Some("server") if args.len() == 1 => {
             serve(io::stdin().lock(), io::stdout().lock())?;
             Ok(true)

@@ -1,9 +1,52 @@
 //! Version-pinned account records. This core has no dependency on qmt-quote.
-//! DLL/worker transport is not exposed until its separate migration is accepted.
+//! Vendor calls are isolated in a child process; no dependency on Python bindings.
 use serde_json::{Value, json};
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-pub const TRANSPORT_AVAILABLE: bool = false;
+/// Implemented platform transport, not a probe of the broker service.
+pub const TRANSPORT_AVAILABLE: bool = cfg!(all(windows, target_pointer_width = "64"));
+pub mod profile;
+pub mod protocol;
+#[cfg(windows)]
+mod session;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+mod worker;
+#[cfg(windows)]
+pub use session::AccountSession;
+#[cfg(windows)]
+pub fn run_worker() -> Result<()> {
+    worker::run()
+}
+#[cfg(not(windows))]
+pub fn run_worker() -> Result<()> {
+    Err("native account requires Windows x64".into())
+}
+
+#[cfg(not(windows))]
+#[derive(Default)]
+pub struct AccountSession;
+#[cfg(not(windows))]
+impl AccountSession {
+    pub fn connected(&mut self) -> bool {
+        false
+    }
+    pub fn generation(&self) -> u64 {
+        0
+    }
+    pub fn close(&mut self) {}
+    pub fn query(
+        &mut self,
+        _path: &std::path::Path,
+        _account: &str,
+        _kind: &str,
+        _op: protocol::Operation,
+        _timeout: std::time::Duration,
+    ) -> Result<Value> {
+        Err("native account requires Windows x64".into())
+    }
+}
 
 /// Encode the pinned STOCK identity; never truncate an oversized account.
 pub fn encode_account(account: &str, account_type: &str) -> Result<[u8; 28]> {

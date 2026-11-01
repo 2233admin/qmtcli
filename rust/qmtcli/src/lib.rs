@@ -1,6 +1,7 @@
 //! Agent-facing dispatch; quote and account cores do not depend on this adapter.
 use bson::Bson;
 use qmt_quote::{QuoteClient, QuoteSession};
+use qmt_trade::{AccountSession, protocol::Operation};
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, Read, Write},
@@ -19,6 +20,7 @@ enum Command {
     Status,
     Doctor,
     FullTick,
+    Account(Operation),
 }
 struct Spec {
     name: &'static str,
@@ -26,6 +28,31 @@ struct Spec {
     description: &'static str,
 }
 const SPECS: &[Spec] = &[
+    Spec {
+        name: "asset",
+        command: Command::Account(Operation::Asset),
+        description: "Read native account assets",
+    },
+    Spec {
+        name: "positions",
+        command: Command::Account(Operation::Positions),
+        description: "Read native account positions",
+    },
+    Spec {
+        name: "orders",
+        command: Command::Account(Operation::Orders),
+        description: "Read native orders, optionally cancelable only",
+    },
+    Spec {
+        name: "trades",
+        command: Command::Account(Operation::Trades),
+        description: "Read native account trades",
+    },
+    Spec {
+        name: "account-snapshot",
+        command: Command::Account(Operation::Snapshot),
+        description: "Non-atomic asset/positions/orders/trades through one retained worker",
+    },
     Spec {
         name: "capabilities",
         command: Command::Capabilities,
@@ -67,6 +94,7 @@ struct QuoteKey {
 #[derive(Default)]
 pub struct Runtime {
     quote: Option<(QuoteKey, QuoteSession)>,
+    account: AccountSession,
 }
 
 pub fn failure(message: impl ToString) -> Value {
@@ -76,9 +104,10 @@ pub fn failure(message: impl ToString) -> Value {
 fn capabilities() -> Value {
     json!({"implementation":"rust","version":env!("CARGO_PKG_VERSION"),
         "transport":["cli","rpc","jsonl-stdio"],"read_only":true,
-        "commands":SPECS.iter().map(|s|json!({"name":s.name,"description":s.description})).collect::<Vec<_>>(),
+        "commands":SPECS.iter().filter(|s|!matches!(s.command,Command::Account(_)) || qmt_trade::TRANSPORT_AVAILABLE).map(|s|json!({"name":s.name,"description":s.description})).collect::<Vec<_>>(),
         "limits":{"symbols":1000,"request_bytes":MAX_REQUEST_BYTES},
-        "unavailable":{"account_transport":"Rust worker/ABI migration pending","mcp":"not implemented",
+        "account_transport_implemented":qmt_trade::TRANSPORT_AVAILABLE,
+        "unavailable":{"account_subscriptions":"unsolicited native events not implemented","mcp":"not implemented",
                        "history":"not implemented","subscriptions":"not implemented"}})
 }
 
@@ -113,26 +142,79 @@ impl Runtime {
                 vec![s.name.to_owned(),s.name.replace('-',"_")]
             } else {vec![s.name.to_owned()]}).collect::<Vec<_>>()},
             "backend":{"const":"native"},"path":{"type":"string","minLength":1},"symbols":{"type":"array","minItems":1,"maxItems":1000,"items":{"type":"string","pattern":"^[!-~]{1,64}$"}},
+            "account":{"type":"string","minLength":1,"maxLength":23,"pattern":"^[ -~]+$"},"account_type":{"enum":["STOCK","stock"]},"cancelable_only":{"type":"boolean"},
             "quote_port":{"type":"integer","minimum":1,"maximum":65535},"timeout":{"type":"number","minimum":0.1,"maximum":60}},
             "allOf":[
                 {"if":{"properties":{"command":{"enum":["full-tick","full_tick"]}}},"then":{"required":["backend","path","symbols"]}},
-                {"if":{"properties":{"command":{"const":"doctor"}}},"then":{"required":["path"]}}
+                {"if":{"properties":{"command":{"const":"doctor"}}},"then":{"required":["path"]}},
+                {"if":{"properties":{"command":{"enum":["asset","positions","orders","trades","account-snapshot","account_snapshot"]}}},"then":{"required":["backend","path","account"]}}
             ]})),
             Command::Examples => Ok(json!([{"id":1,"command":"full_tick","backend":"native",
-                "path":"D:\\QMT","symbols":["600000.SH","000001.SZ"]}])),
+                "path":"D:\\QMT","symbols":["600000.SH","000001.SZ"]},
+                {"id":2,"command":"account_snapshot","backend":"native","path":"D:\\QMT","account":"YOUR_ACCOUNT"}])),
             Command::Status => Ok(json!({"implementation":"rust","scope":"this process",
                 "quote_session_connected":self.quote.is_some(),"broker_login":"not checked",
-                "account_transport_available":qmt_trade::TRANSPORT_AVAILABLE})),
+                "account_transport_implemented":qmt_trade::TRANSPORT_AVAILABLE,"account_transport_available":self.account.connected(),"native_generation":self.account.generation()})),
             Command::Doctor => {
                 let key = quote_key(request)?;
                 QuoteClient::new(&key.root).validate_runtime()?;
                 Ok(
                     json!({"quote_profile":"matched","service_connection":"not attempted",
-                    "account_transport_available":qmt_trade::TRANSPORT_AVAILABLE}),
+                    "account_transport_implemented":qmt_trade::TRANSPORT_AVAILABLE,"account_transport_available":self.account.connected(),
+                    "account_profile":qmt_trade::profile::validate(&key.root).map(|_|"matched".to_owned()).unwrap_or_else(|e|format!("unmatched: {e}")),
+                    "account_service_queue_present":key.root.join("userdata_mini/up_queue_xtquant").is_file()}),
                 )
             }
             Command::FullTick => self.full_tick(request),
+            Command::Account(operation) => self.account_query(request, operation),
         }
+    }
+
+    fn account_query(&mut self, request: &Value, mut operation: Operation) -> Result<Value> {
+        if request["backend"].as_str() != Some("native") {
+            return Err("Rust account queries require explicit backend=native".into());
+        }
+        let account = request["account"].as_str().ok_or("requires account")?;
+        let kind = match request.get("account_type") {
+            None => "STOCK",
+            Some(v) => v.as_str().ok_or("account_type must be a string")?,
+        };
+        qmt_trade::encode_account(account, kind)?;
+        if matches!(operation, Operation::Orders) {
+            match request.get("cancelable_only") {
+                Some(Value::Bool(true)) => operation = Operation::CancelableOrders,
+                Some(Value::Bool(false)) | None => {}
+                _ => return Err("cancelable_only must be a boolean".into()),
+            }
+        }
+        let path = request["path"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or("requires an explicit QMT path")?;
+        let timeout = match request.get("timeout") {
+            None => 5.0,
+            Some(v) => v.as_f64().ok_or("timeout must be numeric")?,
+        };
+        if !timeout.is_finite() || !(0.1..=60.0).contains(&timeout) {
+            return Err("timeout must be 0.1 to 60 seconds".into());
+        }
+        let data = self.account.query(
+            std::path::Path::new(path),
+            account,
+            kind,
+            operation,
+            Duration::from_secs_f64(timeout),
+        )?;
+        let key = match operation {
+            Operation::Asset => "asset",
+            Operation::Positions => "positions",
+            Operation::Orders | Operation::CancelableOrders => "orders",
+            Operation::Trades => "trades",
+            Operation::Snapshot => return Ok(data),
+        };
+        data.get(key)
+            .cloned()
+            .ok_or_else(|| "native worker returned an incomplete result".into())
     }
 
     fn full_tick(&mut self, request: &Value) -> Result<Value> {

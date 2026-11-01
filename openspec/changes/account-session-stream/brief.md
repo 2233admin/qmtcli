@@ -151,3 +151,20 @@ No new registry dependency: clap was checked but is not locally present; this
 slice has only fixed entry modes plus JSON requests, so std args suffice without
 implementing a general option parser. Use Cargo's maintained workspace/lockfile
 mechanism rather than a custom build orchestrator.
+
+## Complete Rust account query path, 2026-11-02
+
+User authorized filling the remaining SDK-architecture gaps. Port the verified
+read-only account protocol, correlated/fragmented list replies and sequential
+four-section snapshots. Implement version-pinned vendor DLL calls only inside
+the same executable's private worker; parent owns deadlines, worker generation,
+reply queue reservation and a kill-on-close Windows job. Add account commands
+to the shared CLI only when the transport implementation passes its checks.
+Use Microsoft's maintained windows-sys bindings for mapping/loading/jobs/random,
+not handwritten Win32 declarations; pinned 0.61.2 with only needed features.
+The private vendor C++ ABI necessarily follows the already verified Python
+adapter. Test pure queue fixtures, bad source/seq/action/fragment/empty cases,
+worker timeout/crash and owned DLL queue probes before any real-service claim.
+Native unsolicited event semantics, subscriptions and real account acceptance
+remain distinct; do not fabricate events from repeated snapshots or call query
+responses a complete SDK replacement. Existing read-only boundaries persist.

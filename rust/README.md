@@ -1,12 +1,13 @@
 # Rust QMTCLI：双核心 workspace
 
-当前阶段：行情 CLI/RPC/JSONL 可运行；账户核心已迁入四类记录解码，账户传输和
-隔离 DLL worker 尚未实现。不是完整替代 Python QMTCLI 或 xtquant。
+当前版本 0.2.0：行情及账户查询可通过 CLI/RPC/JSONL 调用，支持常驻会话。
+账户 IPC 和隔离 DLL worker 已实现并通过自有合成服务验证；真实账户接入尚待验收。
+尚不能完整替代 Python QMTCLI 或 xtquant。
 
 ```text
 qmtcli-rs（统一 agent 入口）
  ├─ qmt-quote：版本校验、TCP/BSON/CRC、心跳、保留行情会话
- └─ qmt-trade：账户编码及资产/持仓/委托/成交记录解码
+ └─ qmt-trade：账户 IPC、回包关联/分片、四项查询 → 同一 exe 的隔离 DLL worker
 ```
 
 两个核心互不依赖。旧 `experiments/native-quote-rs` 只保留 CLI/benchmark
@@ -25,7 +26,7 @@ cargo +1.99.1-x86_64-pc-windows-gnu build --release --locked -p qmtcli-rs
 .\target\release\qmtcli-rs.exe server
 ```
 
-构建和执行都不需要 Python。行情运行仍要求匹配的已安装 MiniQMT，服务已启动。
+构建和执行都不需要 Python。运行仍要求匹配的已安装 MiniQMT，服务已启动。
 `capabilities/schema/examples/status` 不要求 QMT 存在，也不会加载账户 DLL。
 status 的连接字段表示当前进程拥有的会话，不证明柜台登录或实时行情可用。
 
@@ -42,7 +43,7 @@ server 每行接收一个 JSON 请求，每行输出一个结果；短调用可�
 把 path 改为真实 QMT 安装根目录或 userdata_mini。full_tick/full-tick 都接受。
 业务请求必须显式 `backend:native`，不把 Python 的 SDK 默认值悄悄改成 native。
 行情端口默认 58610，可指定 `quote_port`；`timeout` 为 0.1–60 秒，默认 5 秒。
-doctor 可通过 RPC 指定 path，仅核验行情文件指纹，不建立服务连接。
+doctor 可通过 RPC 指定 path，核验行情/账户文件指纹和账户队列是否存在，不建立服务连接。
 
 成功为 `{"ok":true,"data":...}`，失败为 `{"ok":false,"error":"..."}`；非 null
 请求 id 回显。RPC 查询失败退出码非零。server 对错误请求逐行报错后继续运行。
@@ -53,6 +54,34 @@ doctor 可通过 RPC 指定 path，仅核验行情文件指纹，不建立服务
 建立新会话。输入校验失败保留健康会话。EOF 释放本进程拥有的 socket。
 行情时间戳来自服务缓存，不代表实时推送。版本不匹配或服务不可用就报错。
 
+账户请求示例（替换路径与账号）：
+
+```json
+{"id":2,"command":"account_snapshot","backend":"native","path":"D:\\QMT","account":"YOUR_ACCOUNT","account_type":"STOCK","timeout":5}
+```
+
+还可查询 `asset/positions/orders/trades`；`orders` 支持 `cancelable_only:true`。
+只支持已核验的 Windows x64 普通股票账户。账户入口检查三个安装 DLL 的 SHA256，
+只在私有 worker 中加载 ringbuffer.dll；没有 Python worker。账户/路径相同就复用 worker，
+每次仍发新查询；切换账户重建。请求序号、session、记录长度和分片偏移均校验；
+错误后关闭 worker，本次不重放，下一次请求重新连接。行情与账户的连接独立。
+
+`account_snapshot` 顺序读取资产、持仓、委托、成交，`meta.atomic:false`。
+`native_generation` 表示 worker 代次；`event_sequence_available:false`，
+generation/sequence_start/sequence_end 的 0 不是有效事件游标。尚无原生账户推送。
+不通过成交重新计算资产，不删除重复业务行。空列表必须有同次账户校验和明确结束回包。
+
+父进程使用 Windows kill-on-close Job 管理 worker，EOF/超时关闭自己拥有的进程；
+强制结束父进程也会终止 worker。供应商 C++ 对象、映射及模块由 worker 退出时回收，
+不猜测析构 ABI。回复队列以随机会话号独占创建，仅尝试删除自己创建的文件；如果服务
+仍持有映射，文件删除可能失败，不扫描或删除其他队列。账户 IPC 等待预算为 timeout，
+首次文件指纹检查先于该预算，元数据 duration_ms 包含这部分时间。
+worker 单条响应上限 16 MiB、列表最多 100000 行，超限报错。
+
+在其他 Rust 程序直接使用 AccountSession 时，宿主必须分派同一 exe 的
+`--internal-account-worker` 到 `qmt_trade::run_worker()`；qmtcli-rs 已完成此分派。
+私有 worker 模式不是 agent 的公开调用契约。
+
 ## 当前交付边界
 
 | 能力 | 状态 |
@@ -60,7 +89,8 @@ doctor 可通过 RPC 指定 path，仅核验行情文件指纹，不建立服务
 | CLI、RPC、JSONL、发现、行情 doctor/status | 已实现 |
 | 行情快照、连接复用与心跳分流 | 已实现，入口回放通过；真实长连接仍待验收 |
 | 四类账户记录解码 | 已实现，与既有 Python codec 的合成 fixture 对账 |
-| Rust 账户 IPC、DLL ABI、隔离 worker、四项查询 | 未实现，不在命令发现中标可用 |
+| Rust 账户 IPC、DLL ABI、隔离 worker、四项查询 | 已实现；实际安装 DLL + 自有合成服务通过，真实账户验收未完成 |
+| 原生账户事件订阅、重连期间增量补齐 | 未完成，不在能力发现中标可用 |
 | 大 QMT、MCP、历史、订阅、竞价 | 未完成 |
 
 ## 验证
@@ -74,3 +104,8 @@ cargo +1.99.1-x86_64-pc-windows-gnu fmt --all -- --check
 自动测试不连接真实券商。账户 fixtures 为合成二进制及由既有 Python decoder
 产生的完整预期字段；包含 Int64 数量、中文备注和零委托 id，无真实账户数据。
 具体进度及实际运行回执仍归 `openspec/changes/account-session-stream/`。
+
+本机 GNU dlltool 在 windows-sys 的导入库生成阶段曾停滞；已有 LLVM 的
+llvm-dlltool 可完成相同构建。本机验证命令在进程内把含该工具的私有目录
+`F:\projects\_research\qmt-ida-20261031\llvm-dlltool`（文件名 dlltool.exe）
+与 `C:\Program Files\LLVM\bin` 前置 PATH；未修改全局工具链配置。

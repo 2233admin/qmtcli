@@ -63,5 +63,8 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Move quote source/tests to qmt-quote; retain only experiment adapters; one root lockfile and no cross-core dependency.
 - [x] Rust CLI/rpc/JSONL quote entry, truthful discovery, bounded input, retained sessions and EOF cleanup; 42-query owned replay accepted.
 - [x] qmt-trade account/asset/position/order/trade codecs against synthetic Python-derived golden fixtures.
-- [ ] Rust account IPC, pinned DLL ABI and isolated worker; actual four-section Rust snapshot acceptance.
+- [x] Rust read-only account IPC, pinned DLL ABI, correlated/fragmented responses and isolated worker.
+- [x] Owned installed-DLL probe and synthetic-service four-section Rust snapshots, reuse, identity failure/timeout recovery, EOF and parent-death cleanup.
+- [ ] Actual broker account four-section Rust snapshot acceptance; synthetic service is not a substitute.
+- [ ] Rust unsolicited account events, subscription lifecycle and recovery consistency.
 - [ ] Rust MCP adapter and actual MiniQMT/Big QMT entry-point acceptance; no capability overclaim.

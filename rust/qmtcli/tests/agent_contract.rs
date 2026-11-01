@@ -3,7 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 #[test]
-fn discovery_does_not_require_qmt_or_advertise_unimplemented_accounts() {
+fn discovery_does_not_require_qmt_and_only_advertises_implemented_transports() {
     let result = Command::new(env!("CARGO_BIN_EXE_qmtcli-rs"))
         .arg("capabilities")
         .output()
@@ -18,7 +18,29 @@ fn discovery_does_not_require_qmt_or_advertise_unimplemented_accounts() {
         .map(|v| v["name"].as_str().unwrap())
         .collect::<Vec<_>>();
     assert!(names.contains(&"full-tick"));
-    assert!(!names.contains(&"account-snapshot"));
+    assert_eq!(
+        names.contains(&"account-snapshot"),
+        qmt_trade::TRANSPORT_AVAILABLE
+    );
+    assert!(!names.contains(&"account-subscribe"));
+}
+
+#[test]
+#[cfg(windows)]
+fn account_requests_are_discovered_and_validate_identity_before_loading_native_code() {
+    let mut runtime = qmtcli_rs::Runtime::default();
+    let cap = runtime.handle(&json!({"command":"capabilities"}));
+    assert!(
+        cap["data"]["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["name"] == "account-snapshot")
+    );
+    let result=runtime.handle(&json!({"id":55,"command":"account_snapshot","backend":"native","path":"missing-root","account":"A","account_type":"CREDIT"}));
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["id"], 55);
+    assert!(result["error"].as_str().unwrap().contains("STOCK"));
 }
 
 #[test]

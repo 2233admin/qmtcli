@@ -768,3 +768,101 @@ All owned replay processes closed; build outputs/package receipts retained for u
 Main checkout's unrelated dirty files remain. No remote push/merge, tracker or KB
 truth copy. Overall OpenSpec stays in_review: real Rust quote idle/recovery,
 account ABI/worker/four-section snapshots and Big QMT acceptance remain pending.
+
+## Rust native account query completion, 2026-11-02
+
+This supersedes the first Rust slice's missing account transport, not its pending
+real-service acceptance. Version 0.2.0 keeps independent qmt-quote/qmt-trade cores.
+qmt-trade owns the read-only queue state machine, account/sequence correlation,
+list/552-byte trade fragmentation and a same-executable DLL worker. qmtcli owns
+the two sessions and JSON contract. Microsoft windows-sys 0.61.2 is the maintained
+Win32 binding; no handwritten Win32 declarations or Python child process.
+Only the pinned ringbuffer C++ function-pointer ABI is mirrored from the verified
+ctypes adapter. Three DLL hashes are verified before loading. Parent-side RNG
+reserves a fresh reply filename; the worker verifies its ownership marker.
+Opaque C++ objects and mappings live until worker exit rather than guessing a
+destructor/allocator. Windows Job kill-on-close owns only that spawned process.
+
+Public read-only commands: asset, positions, orders (cancelable_only optional),
+trades, account-snapshot. No subscription is advertised. Requests use fresh wire
+sequences even on a retained worker; failures invalidate that worker without
+replaying the request. Wrong accounts/sessions/actions and malformed fragments
+fail. Explicit empty completion is accepted only after same-query asset identity
+validation, with no partial row/list. Lists preserve backend rows; no derived
+asset calculation. Snapshot meta.atomic=false and event_sequence_available=false;
+zero event cursors are placeholders, not push progress. Current-exe worker
+dispatch is part of the host contract, already implemented in qmtcli-rs.
+
+Observed verification:
+- Protocol tests first failed on the explicit unimplemented state; implemented
+  request allowlist and four-section correlation then passed. CLI account test
+  first failed on its missing entry. Two later malformed-fragment/empty-after-row
+  regression cases were added after implementation, not claimed as TDD red.
+- Final release workspace tests: 43 pass, one ignored test-only child entry
+  exercised by three supervisor tests. Tests cover 40 responses on one process,
+  bad JSON/id, timeout termination, stale sequence, wrong session/action, early
+  last/offset fragments, strict empty completion, codecs and existing quote paths.
+  Clippy with warnings denied, fmt and shared-venv ruff pass; production Python
+  source is unchanged, so no new 427-test Python suite claim is made.
+- Actual installed DLL private queue probe passes with exit 0 and matching frame,
+  no broker queue opened. Final receipt: research recovery/rust-account-abi.json.
+- Final actual exe + actual installed DLL + owned synthetic mapped service:
+  40 fresh four-section snapshots use one connection/worker and 160 queries.
+  Fake accounts A/B, Int64 volume, zero order id, fragmented trades, cancelable
+  flag, validated empty lists and stale-frame control pass. Wrong-identity and
+  timeout errors recover only on the next request. Independent quote session
+  survives account faults: two quote queries, one auth, zero errors. Including
+  recovery/configuration and deliberate parent termination: five owned account
+  connections, 185 queries, zero fixture errors, no remaining workers or queue
+  files after service exit. EOF and forced parent death both terminate workers.
+  Receipt: F:/projects/_research/qmt-ida-20261031/recovery/rust-account-cli.json.
+- Quote CLI regression: 42 queries, two auths, zero errors; 41 queries on the
+  first connection. Receipt: same recovery directory/rust-workspace-cli.json.
+- Read-only doctor: both runtime profiles matched, real account service queue
+  absent; no service connection attempted. Consequently real Rust account and
+  Big QMT acceptance remain pending. This is not an observed broker snapshot.
+
+Build friction: installed GNU dlltool hung generating windows-sys crypt32 imports;
+only the verified owned cargo process tree was terminated. Installed LLVM's
+llvm-dlltool, copied to a private research directory as dlltool.exe and prepended
+to PATH for this command, completed the same pinned binding build. No dependency
+downgrade or global environment change. The timeout test initially assumed a
+nonzero child termination code, which Windows Job close does not guarantee;
+it now verifies child alive before Job close and actually terminated within bound,
+while the timed-out request remains an error. Initial compiler/lint attempts are
+not counted as passing tests.
+
+Primary binding/lifecycle references: [windows-rs](https://github.com/microsoft/windows-rs),
+[Windows Job objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects),
+[LoadLibraryExW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw),
+[CreateFileMappingW](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw).
+Locked windows-sys source was checked for actual function signatures.
+
+Closeout: existing OpenSpec remains in_review; no new tracker or remote writes.
+Usage/architecture remain in this source repository. A tooling-friction KB recall
+returned no hits with lexical-only degraded search; rhizome domains found no
+configured kb-sources.toml from either worktree or F:/projects. No guessed KB
+source or global configuration was created; the verified workaround is retained
+here and in rust/README.md. No duplicate product-state KB was written.
+Remaining: real account snapshots, unsolicited native events/subscription and
+recovery consistency, retained live quote acceptance, Big QMT, history/MCP/auction.
+
+Local delivery: ignored dist/rust/qmtcli-rs-0.2.0-windows-x64.zip; previous 0.1.0
+archive preserved. Executable SHA256:
+`9a6c74fe966f82eae53625be5b549be266d9196d70b54860511c98d63e2f0d83`.
+ZIP SHA256: `5abaa8fa870b1893f8d2f9263cfe8c3a04dc2dd64438a3632d4b9f15d205dac0`.
+Actual ZIP bytes match the executable, ZIP integrity passes; emitted schema and
+both examples validate and missing backend is rejected. Discovery starts with
+PATH restricted to System32. PE imports contain system DLLs, no Python or vendor
+DLL static dependency (the private worker loads the pinned vendor DLL dynamically).
+Receipt: research recovery/rust-account-packaging.json. No clean-machine claim.
+
+Structural first attempt failed correctly because documentation inputs changed
+while consumed: `1793555568050-85320-core/run-complete.json`. All tracked/untracked
+repository inputs must stay frozen during the rerun, not only Rust source.
+
+Frozen-input rerun PASS/completed:
+`C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793555722832-99612-core/run-complete.json`.
+Only this receipt was appended afterward; no source changes after the gate.
+All owned CLI workers are gone and the owned fixture userdata directory is empty.
+Main checkout's four pre-existing unrelated dirty entries remain untouched.
