@@ -1,4 +1,4 @@
-//! Observed, version-pinned local protocol, not a published official wire API.
+//! Observed, version-pinned quote protocol, not a published official wire API.
 use crate::Result;
 use bson::{Bson, Document, doc};
 use flate2::{Compression, Decompress, FlushDecompress, Status, write::ZlibEncoder};

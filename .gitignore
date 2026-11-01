@@ -7,3 +7,5 @@ dist/
 build/
 *.egg-info/
 /experiments/native-quote-rs/target/
+/target/
+!rust/qmt-trade/tests/fixtures/*.bin

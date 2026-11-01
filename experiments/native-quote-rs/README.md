@@ -1,4 +1,10 @@
-# Rust 原生行情请求实验
+# Rust 原生行情请求实验适配器
+
+2026-11-02：行情实现和测试已迁到 `rust/qmt-quote`。本目录保留旧实验 exe 与
+benchmark 入口供已有研究脚本使用，二者都调用同一份核心。正式 Rust 入口和
+当前能力见 [Rust workspace](../../rust/README.md)。根目录 Cargo.lock 为唯一锁文件。
+
+旧研究驱动若硬编码本目录的 target 路径，构建时显式指定 --target-dir experiments/native-quote-rs/target。
 
 问题：能否沿用官方 `get_full_tick(code_list)` 的业务接口，由 Rust 直接请求
 MiniQMT，脱离 Python 和 xtquant 的运行时依赖？本目录用于验证这件事，尚未接入
@@ -13,7 +19,7 @@ cargo run --locked --manifest-path experiments/native-quote-rs/Cargo.toml -- D:\
 编译后也可独立运行，不需要启动 Python：
 
 ```powershell
-.\experiments\native-quote-rs\target\debug\qmt-native-quote-experiment.exe D:\DFZQxtqmt_client_real_win64 600000.SH 000001.SZ
+.\target\debug\qmt-native-quote-experiment.exe D:\DFZQxtqmt_client_real_win64 600000.SH 000001.SZ
 ```
 
 程序输出 `{"ok":true,"data":{"600000.SH":{...},"000001.SZ":{...}}}`。
@@ -23,7 +29,7 @@ cargo run --locked --manifest-path experiments/native-quote-rs/Cargo.toml -- D:\
 Rust 库调用方式：
 
 ```rust,no_run
-use qmt_native_quote_experiment::{QuoteClient, Result};
+use qmt_quote::{QuoteClient, Result};
 
 fn main() -> Result<()> {
     let client = QuoteClient::new(r"D:\DFZQxtqmt_client_real_win64");

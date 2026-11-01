@@ -1,6 +1,6 @@
 //! Benchmark adapter only. Talks exclusively to an explicitly selected loopback fixture.
 use bson::{Bson, Document};
-use qmt_native_quote_experiment::{QuoteClient, QuoteSession, Result};
+use qmt_quote::{QuoteClient, QuoteSession, Result};
 use serde_json::{Value, json};
 use std::{
     hint::black_box,
@@ -9,7 +9,7 @@ use std::{
 };
 
 #[allow(dead_code)]
-#[path = "../src/wire.rs"]
+#[path = "../../../rust/qmt-quote/src/wire.rs"]
 mod wire;
 
 fn codes(count: usize) -> Vec<String> {

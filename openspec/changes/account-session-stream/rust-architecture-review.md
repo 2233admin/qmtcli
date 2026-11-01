@@ -4,6 +4,10 @@
 读者动作：审查并选择首版结构；本文件为决策前设计，依附当前 OpenSpec，不是新计划系统。
 作者为本次 agent，自评；没有独立审查者，不宣称外部架构评审通过。
 
+2026-11-02 用户已确认：两个独立 Rust 核心 qmt-quote/qmt-trade，同一 Cargo
+workspace、统一 QMTCLI 入口。此决定取代下文当时的“一个产品 crate”候选；
+账户工作进程和 ABI 仍需后续实施验收。当前实现边界见 [Rust 使用说明](../../../rust/README.md)。
+
 ## 判断与选择
 
 [K] 已有 Rust 行情库、Python 原生账户 IPC 和稳定的 agent JSON 契约可复用。
@@ -29,7 +33,7 @@
 | 事实 | 代码证据 | 对本轮的含义 |
 |---|---|---|
 | Rust CLI 一次读取后退出 | [main.rs](../../../experiments/native-quote-rs/src/main.rs)，`QuoteClient::get_full_tick` | 外部没有常驻 JSONL、发现命令、请求 id，也没有账户入口 |
-| Rust 库有单所有者 QuoteSession | [lib.rs](../../../experiments/native-quote-rs/src/lib.rs)，`connect` / `QuoteSession::get_full_tick` | 可直接复用已有会话，不需要另写行情协议 |
+| Rust 库有单所有者 QuoteSession | [lib.rs](../../../rust/qmt-quote/src/lib.rs)，`connect` / `QuoteSession::get_full_tick`（迁移后的现行路径） | 可直接复用已有会话，不需要另写行情协议 |
 | 版本校验、返回代码扫描及克隆在库中 | 同文件 `validate_runtime`、`selected`、`result.clone()` | 不是编译器能自动消除的架构成本；优化不得删除校验 |
 | 账户 IPC 是 ctypes 调券商 C++ 导出 | [native_asset.py](../../../src/qmtcli/native_asset.py)，`_Ring`、`_WorkerConnection` | 去掉 CPython SDK 不等于去掉券商 DLL；Rust FFI 仍待移植验证 |
 | 账户已有持久 worker、请求相关性和父超时 | [native_session.py](../../../src/qmtcli/native_session.py)，`_start/query/close` | 复用故障模型和负控，不把 DLL 放进主进程 |
@@ -162,8 +166,9 @@ userenv、ws2_32、bcryptprimitives 及同步 API set），不见 Python/券商 
 这只说明该行情产物的静态导入，不能替代未来账户 worker 的动态依赖验收。
 
 尚未证明：Rust 账户 ABI、真实持久行情会话、跨入口性能、MCP Rust 实现、
-大 QMT 可用性、干净机器可分发性。用户需选择：是否采用 C，以及 MCP 是否必须
-与首个安装包同步。其余建议依赖该选择；本轮没有开始生产迁移。
+大 QMT 可用性、干净机器可分发性。用户已选择双核心和统一入口；账户隔离 worker
+仍需移植验收，MCP 是否必须与首个安装包同步尚未确定。当前进展以 Rust 使用
+说明及 tasks 为准；本审查时点没有开始生产迁移。
 
 ## 本轮检查
 

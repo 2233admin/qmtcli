@@ -133,3 +133,21 @@ leaving defaults intact. Compare unchanged Rust source/lockfile under 1.99.0 and
 1.99.1 in the same five interleaved replay rounds, retained snapshots, JSON and
 decoder components, plus native Python/SDK references. Preserve original receipts;
 do not attribute noise or a compiler bump to a production architecture change.
+
+## Approved two-core Rust workspace, 2026-11-02
+
+User confirmed two Rust cores in one Cargo workspace with one QMTCLI entry.
+qmt-quote and qmt-trade must not depend on one another. First implement the
+workspace, move the tested quote source without semantic changes, and deliver
+CLI/rpc/JSONL quote access with retained sessions and truthful discovery. Port
+account codecs into qmt-trade; account transport is unavailable until its isolated
+worker/ABI migration is accepted. Python production stays unchanged. Existing
+experiment main/benchmark become adapters to the single quote implementation;
+remove their legacy wire source now and keep adapters only while local research
+drivers use them. A future adapter removal requires updating those named callers.
+Protect old quote behavior with existing tests; new entry/codec behavior follows
+red/green tests, owned replay validation, and the existing structural gate.
+No new registry dependency: clap was checked but is not locally present; this
+slice has only fixed entry modes plus JSON requests, so std args suffice without
+implementing a general option parser. Use Cargo's maintained workspace/lockfile
+mechanism rather than a custom build orchestrator.

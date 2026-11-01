@@ -1,4 +1,4 @@
-//! Experimental read-only MiniQMT client. Not an official or complete QMT SDK.
+//! Read-only, version-pinned MiniQMT quote core. Not an official QMT SDK.
 
 use bson::{Bson, Document, doc};
 use sha2::{Digest, Sha256};
@@ -85,7 +85,8 @@ impl QuoteClient {
         QuoteSession::authenticate(stream, self.timeout, deadline)
     }
 
-    fn validate_runtime(&self) -> Result<()> {
+    /// Check the pinned local build without opening a service connection.
+    pub fn validate_runtime(&self) -> Result<()> {
         if !cfg!(all(windows, target_pointer_width = "64")) {
             return Err("native quote experiment requires Windows x64".into());
         }

@@ -324,8 +324,36 @@ dependencies = [
  "bson",
  "crc32fast",
  "flate2",
+ "qmt-quote",
+ "serde_json",
+]
+
+[[package]]
+name = "qmt-quote"
+version = "0.1.0"
+dependencies = [
+ "bson",
+ "crc32fast",
+ "flate2",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "qmt-trade"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "qmtcli-rs"
+version = "0.1.0"
+dependencies = [
+ "bson",
+ "qmt-quote",
+ "qmt-trade",
+ "serde_json",
 ]
 
 [[package]]

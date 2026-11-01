@@ -519,6 +519,13 @@ python scripts/check_doc_drift.py
 
 当前仓库保留了 PyPI 打包元数据，但不在当前工作流中发布。
 
+## Rust 原生入口
+
+独立行情核心 `qmt-quote` 和账户核心 `qmt-trade` 已拆入 Cargo workspace，
+统一入口为 `qmtcli-rs`。当前可运行行情 RPC/常驻 JSONL；账户记录解码已迁入，
+账户传输和隔离 worker 尚未实现，不能当作完整 Rust 账户版使用。
+构建、命令和验收边界见 [Rust 使用说明](rust/README.md)。Python 入口继续保留。
+
 ## 同生态项目
 
 - [opencli-admin](https://github.com/2233admin/opencli-admin) — 自托管的研究与情报流水线

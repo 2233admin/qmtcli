@@ -58,3 +58,10 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [ ] Isolate returned-code validation and BSON ownership copying costs; production checks remain intact.
 
 - [x] Review installed SDK JSON/BSON/buffer paths against primary docs; verify Rust 1.99.1 stable and run unchanged-source compiler A/B with 17,920 replay queries, zero errors and five interleaved blocks per condition.
+
+- [x] User confirmed independent qmt-quote/qmt-trade cores and a shared Rust CLI in one Cargo workspace.
+- [x] Move quote source/tests to qmt-quote; retain only experiment adapters; one root lockfile and no cross-core dependency.
+- [x] Rust CLI/rpc/JSONL quote entry, truthful discovery, bounded input, retained sessions and EOF cleanup; 42-query owned replay accepted.
+- [x] qmt-trade account/asset/position/order/trade codecs against synthetic Python-derived golden fixtures.
+- [ ] Rust account IPC, pinned DLL ABI and isolated worker; actual four-section Rust snapshot acceptance.
+- [ ] Rust MCP adapter and actual MiniQMT/Big QMT entry-point acceptance; no capability overclaim.

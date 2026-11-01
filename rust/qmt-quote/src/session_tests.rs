@@ -1,4 +1,4 @@
-//! Owned loopback fixtures only: never connect to a broker or run a strategy.
+//! Quote-core owned loopback fixtures; never connect to a broker or run a strategy.
 use super::*;
 use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use std::{net::TcpListener, thread};

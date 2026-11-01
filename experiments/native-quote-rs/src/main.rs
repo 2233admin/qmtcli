@@ -1,5 +1,5 @@
 use bson::Bson;
-use qmt_native_quote_experiment::{QuoteClient, Result};
+use qmt_quote::{QuoteClient, Result};
 
 fn run() -> Result<serde_json::Value> {
     let mut args = std::env::args_os().skip(1);

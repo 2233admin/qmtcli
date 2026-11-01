@@ -1,0 +1,12 @@
+{
+  "account_type": 2,
+  "account_id": "A",
+  "stock_code": "600000.SH",
+  "volume": 8589934592,
+  "can_use_volume": 200,
+  "open_price": 12.5,
+  "market_value": 2500.0,
+  "frozen_volume": 5,
+  "on_road_volume": 7,
+  "yesterday_volume": 100
+}

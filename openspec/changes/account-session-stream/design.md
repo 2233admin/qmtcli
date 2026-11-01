@@ -717,3 +717,54 @@ packaging and MCP scope remain explicit decision/verification points. No code,
 config, QMT instance or deployment was modified. Code Intel completed PASS on
 current source: `1793541903515-79844-core/run-complete.json`. Only documentation
 changed afterward; no new unit/live/performance result is claimed.
+
+## Approved two-core workspace / first runnable slice, 2026-11-02
+
+User confirmed qmt-quote/qmt-trade as independent Rust cores in one Cargo workspace
+with a single QMTCLI entry. This supersedes the review's one-product-crate candidate.
+Implemented the bounded first slice documented in brief: move the existing quote
+implementation/tests to qmt-quote, port account record codecs to qmt-trade, and
+provide qmtcli-rs discovery/rpc/JSONL/quote access. Python source is unchanged.
+Cargo metadata confirms the cores do not depend on each other; the CLI depends on
+both. The old experiment is an adapter only. Root Cargo.lock replaces its nested
+lockfile; comparison confirms all 77 registry package versions/checksums unchanged.
+
+The CLI owns QuoteSession across JSONL requests; config changes drop/reconnect,
+input errors preserve a healthy session, query/wire errors invalidate it, and EOF
+drops owned sockets. Explicit backend=native is required for full-tick. The shared
+registry drives discovery/schema/dispatch; stdout is JSON-only, ids are echoed,
+input is bounded to 1 MiB, malformed/oversized lines fail individually and the
+server continues. No account transport, subscriptions, history or MCP is advertised.
+Account input and four record codecs are pure, identity/number/length checked;
+the DLL/worker migration remains unimplemented, not hidden behind Python fallback.
+
+Evidence actually obtained:
+- Before migration: 18 quote tests plus 7 reused benchmark wire tests pass.
+- Red: the initial asset fixture failed on its missing codec; three CLI tests
+  failed on the missing entry. Additional full-record/oversize tests were added
+  after implementation, not claimed as separate red/green cycles.
+- Final `cargo +1.99.1-x86_64-pc-windows-gnu test --offline --release --locked
+  --workspace --all-targets --target-dir .../rust1991-target -j 4`: 33 executed
+  tests pass (18 quote, 7 reused adapter-wire, 4 account, 4 entry).
+- Same-toolchain workspace release Clippy warnings denied, fmt check, release
+  build, shared-venv ruff and git diff whitespace check pass. No new Python suite
+  rerun is claimed because production Python did not change.
+- Actual new exe, owned replay: 41 queries share one auth; invalid symbols do not
+  break reuse; changing timeout creates the second session; 42 total queries,
+  2 auths, zero errors, two peer closes at config switch/EOF. Both child processes
+  exit normally. Receipt: `F:/projects/_research/qmt-ida-20261031/recovery/rust-workspace-cli.json`.
+- Maintained jsonschema validates the emitted schema and example and rejects a
+  missing backend. PE imports are Windows system DLLs only; discovery starts
+  with PATH restricted to System32. This is not a clean-machine/live-service test.
+- Code Intel on frozen source PASS/completed:
+  `C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793550809221-53644-core/run-complete.json`.
+  Only documentation receipts/path notes and fixture-tracking ignore rules changed afterward.
+
+Local distribution under ignored `dist/rust/`: qmtcli-rs.exe, README, source usage
+notes, SHA256 and `qmtcli-rs-0.1.0-windows-x64.zip`; no broker software included.
+Executable SHA256: `255f6ca8b18b5cbca520046d872f4f3dbcced8809a6085f64f35b7217f6b55b3`.
+Usage/current limits: [Rust README](../../../rust/README.md).
+All owned replay processes closed; build outputs/package receipts retained for use.
+Main checkout's unrelated dirty files remain. No remote push/merge, tracker or KB
+truth copy. Overall OpenSpec stays in_review: real Rust quote idle/recovery,
+account ABI/worker/four-section snapshots and Big QMT acceptance remain pending.
