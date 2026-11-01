@@ -58,6 +58,14 @@ pub(crate) fn request(
 }
 
 pub(crate) fn read_reply(reader: &mut impl Read, expected_seq: u32) -> Result<Document> {
+    loop {
+        if let Some(body) = read_body(reader, expected_seq)? {
+            return decode_reply(&body);
+        }
+    }
+}
+
+fn read_body(reader: &mut impl Read, expected_seq: u32) -> Result<Option<Vec<u8>>> {
     let mut header = [0_u8; 12];
     reader.read_exact(&mut header)?;
     let size = u32::from_be_bytes(header[..4].try_into()?) as usize;
@@ -67,10 +75,15 @@ pub(crate) fn read_reply(reader: &mut impl Read, expected_seq: u32) -> Result<Do
     if !(12..=MAX_SIZE).contains(&size) {
         return Err("invalid quote RPC frame size".into());
     }
-    if seq != expected_seq {
+    if kind == 1 {
+        // Native keepalive sequence bits [35:32] occupy flags [11:8].
+        // Pinned sender emits 0..4 zero padding bytes and a CRC, not zlib/BSON.
+        if flags & !0x0f00 != 0x2040 || !(16..=20).contains(&size) {
+            return Err("invalid keepalive header".into());
+        }
+    } else if seq != expected_seq {
         return Err("quote RPC reply sequence mismatch".into());
-    }
-    if kind != 3 || !matches!(flags, 0x42 | 0x2042) {
+    } else if kind != 3 || !matches!(flags, 0x42 | 0x2042) {
         return Err("unsupported quote RPC kind/flags".into());
     }
     let mut body = vec![0_u8; size - 12];
@@ -82,7 +95,17 @@ pub(crate) fn read_reply(reader: &mut impl Read, expected_seq: u32) -> Result<Do
         }
         body.truncate(split);
     }
-    let decoded = inflate(&body, MAX_PAYLOAD)?;
+    if kind == 1 {
+        if body.iter().any(|byte| *byte != 0) {
+            return Err("invalid keepalive padding".into());
+        }
+        return Ok(None);
+    }
+    Ok(Some(body))
+}
+
+fn decode_reply(body: &[u8]) -> Result<Document> {
+    let decoded = inflate(body, MAX_PAYLOAD)?;
     let mut cursor = Cursor::new(&decoded);
     let reply = Document::from_reader(&mut cursor)?;
     if cursor.position() != decoded.len() as u64 {
@@ -125,6 +148,46 @@ fn inflate(body: &[u8], limit: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn keepalive(flags: u16, padding: &[u8]) -> Vec<u8> {
+        let mut raw = Vec::new();
+        raw.extend(((16 + padding.len()) as u32).to_be_bytes());
+        raw.extend(0xc1234567_u32.to_be_bytes());
+        raw.extend(1_u16.to_be_bytes());
+        raw.extend(flags.to_be_bytes());
+        raw.extend(padding);
+        raw.extend(crc(padding).to_be_bytes());
+        raw
+    }
+
+    #[test]
+    fn keepalives_with_high_sequence_bits_are_not_rpc_replies() {
+        let mut raw = Vec::new();
+        for high in 0..16_u16 {
+            raw.extend(keepalive(0x2040 | high << 8, &[0; 4]));
+        }
+        raw.extend(reply());
+        assert!(read_reply(&mut &raw[..], 1).unwrap().contains_key("result"));
+    }
+
+    #[test]
+    fn corrupt_and_unrecognized_keepalives_fail() {
+        let mut bad_crc = keepalive(0x2e40, &[]);
+        *bad_crc.last_mut().unwrap() ^= 1;
+        assert!(
+            read_reply(&mut &bad_crc[..], 1)
+                .unwrap_err()
+                .to_string()
+                .contains("CRC")
+        );
+        for raw in [
+            keepalive(0x2042, &[]),
+            keepalive(0x2040, &[0; 5]),
+            keepalive(0x2040, &[1]),
+        ] {
+            assert!(read_reply(&mut &raw[..], 1).is_err());
+        }
+    }
 
     #[test]
     fn valid_payload_larger_than_one_output_chunk_roundtrips() {

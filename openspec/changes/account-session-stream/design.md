@@ -583,3 +583,42 @@ The failed-login markers are new context; they do not prove that failed login
 caused the startup capability value zero, nor that the value is a permanent
 entitlement restriction. Preserve the directly observed gate/refusal results but
 recheck after a confirmed relevant counter login before final capability judgment.
+
+## Login-independent Rust session implementation — 2026-11-01
+
+User asked what can proceed while login is unavailable. Implemented the next
+bounded slice in experiments/native-quote-rs: QuoteClient::connect returns an
+owned QuoteSession, authenticating once after pinned-runtime validation. Each
+get_full_tick sends a fresh sequence and has its own deadline. The existing
+QuoteClient::get_full_tick remains the one-shot convenience API. Session ownership
+is single mutable Rust ownership; no background network listener or new dependency.
+
+The frame reader now routes directly observed kind=1 keepalives separately from
+kind=3 RPC replies. It normalizes only flags bits 11:8 (high sequence bits), accepts
+the pinned 0x2040 control feature pattern and size 16–20, verifies CRC and zero
+padding, then continues toward the matching RPC sequence. Unknown/corrupt frames
+still fail. Heartbeats do not reset the request's DeadlineStream budget. Quote
+results are not cached and real server timestamps remain unchanged.
+
+Wire, timeout or result-validation errors discard the owned socket. Later calls
+fail closed; reconnect requires an explicit new client.connect, with fresh auth
+and sequence. No automatic replay/fallback. Input validation errors preserve a
+healthy socket; sequence exhaustion closes it instead of wrapping. Drop also
+closes a successful retained connection.
+
+| Conclusion | Actual check | Result / limit |
+|---|---|---|
+| Session behavior is guarded offline | cargo test --locked --manifest-path experiments/native-quote-rs/Cargo.toml -j 4 | 18 passed, 0 failed; fixture execution 0.26s. New tests were added first, expected E0425/E0433 missing QuoteSession errors observed, then implementation added. |
+| One auth, fresh reads, control routing and recovery work against fixtures | src/session_tests.rs and wire tests | Owned ephemeral loopback peers assert actual caller PID, auth once, sequences 2/3/4, distinct reply values, fragmented/coalesced keepalives, timeout cleanup, peer EOF, malformed result, auth rejection, exhaustion and explicit reconnect with sequence reset. All peer threads joined; no actual broker contacted. |
+| All observed control sequence-bit variants remain distinct from RPC replies | keepalives_with_high_sequence_bits_are_not_rpc_replies | All 16 high-nibble variants accepted; corrupted CRC, unknown flags, oversized or nonzero-padding control packets rejected. Subscription notifications still unsupported. |
+| CLI/library build and static checks pass | cargo build --locked; cargo clippy --locked --all-targets -- -D warnings; cargo fmt -- --check | All exit 0; final executable rebuilt. Manifest path is experiments/native-quote-rs/Cargo.toml; no dependency/lockfile changes. |
+| Existing Python CLI remains intact | UV_PROJECT_ENVIRONMENT=F:/projects/qmtcli/.venv; uv run --no-sync --extra dev pytest -q; ruff check . | 427 passed in 338.93s; lint exit 0; git diff --check exit 0. Raw command output is retained in this turn's tool transcript, not an invented log file. |
+| Structural gate completes | code-intel . --mode normal on frozen source | PASS / completed; C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793535574544-34580-core/run-complete.json. Only documentation receipts changed afterward. |
+
+Scope remains an experimental Rust library/CLI, not a replacement of the formal
+QMTCLI Python backend. Actual retained Rust session acceptance against QMT, Big
+account access, real disconnect/idle behavior, historical decoding and live push
+remain unchecked. No running QMT process, login flow, capability or cache was
+modified. Temporary peers were test-only; generated targets stay ignored and are
+retained as runnable artifacts. Main checkout's unrelated dirty files remain.
+Keep OpenSpec in_review; no tracker/KB duplication, remote push or merge.

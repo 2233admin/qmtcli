@@ -86,3 +86,14 @@ Acceptance for this research slice: capture bounded header/CRC metadata, identif
 the native sender, test a connection across multiple idle control frames and keep
 the result distinct from an implemented Rust persistent-session API. No shared
 process hooks/restarts, PID spoofing, new downloads or trading actions.
+
+## Offline Rust session slice while counter login is unavailable
+
+Implement the observed kind=1 keepalive branch and explicit retained QuoteSession.
+Keep QuoteClient.get_full_tick as the existing one-shot convenience method. Connect
+validates the pinned runtime and authenticates once; every read has a fresh wire
+sequence/deadline. Any wire/data failure discards the socket; reconnect is an
+explicit new connect, never automatic replay. Validate on owned loopback fixtures
+with no real broker/login dependency: heartbeat CRC/flags/padding, fresh results,
+single authentication, peer EOF, timeout and malformed response cleanup. Actual
+retained Rust connection against Mini/Big QMT remains separate live acceptance.

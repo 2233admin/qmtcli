@@ -9,6 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(test)]
+mod session_tests;
 mod wire;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -36,7 +38,7 @@ const PROFILE: [(&str, &str); 5] = [
     ),
 ];
 
-/// Configuration only: each query owns a fresh socket, closed by Rust's Drop.
+/// Pinned runtime configuration. Connect explicitly to retain an owned socket.
 pub struct QuoteClient {
     root: PathBuf,
     port: u16,
@@ -66,6 +68,11 @@ impl QuoteClient {
     /// Preserves cached timestamps and numeric BSON types, including Int64.
     pub fn get_full_tick(&self, code_list: &[&str]) -> Result<Document> {
         validate_symbols(code_list)?;
+        self.connect()?.get_full_tick(code_list)
+    }
+
+    /// Validate the runtime and authenticate once. Never reconnects implicitly.
+    pub fn connect(&self) -> Result<QuoteSession> {
         if self.port == 0
             || !(Duration::from_millis(100)..=Duration::from_secs(60)).contains(&self.timeout)
         {
@@ -74,33 +81,8 @@ impl QuoteClient {
         self.validate_runtime()?;
         let deadline = Instant::now() + self.timeout;
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
-        let mut stream = TcpStream::connect_timeout(&address, remaining(deadline)?)?;
-        let mut io = DeadlineStream {
-            stream: &mut stream,
-            deadline,
-        };
-        let auth = wire::request(
-            &mut io,
-            1,
-            "authPid",
-            doc! { "pid": std::process::id() as i32 },
-        )?;
-        if !matches!(auth.get_bool("success"), Ok(true)) {
-            return Err("normal caller-PID authentication rejected".into());
-        }
-        let symbols = code_list
-            .iter()
-            .map(|s| Bson::String((*s).into()))
-            .collect::<Vec<_>>();
-        let reply = wire::request(&mut io, 2, "getFullTick", doc! { "stockMarkets": symbols })?;
-        let result = reply.get_document("result")?;
-        if result
-            .iter()
-            .any(|(key, value)| !selected(key, code_list) || !matches!(value, Bson::Document(_)))
-        {
-            return Err("invalid full-tick symbol mapping".into());
-        }
-        Ok(result.clone())
+        let stream = TcpStream::connect_timeout(&address, remaining(deadline)?)?;
+        QuoteSession::authenticate(stream, self.timeout, deadline)
     }
 
     fn validate_runtime(&self) -> Result<()> {
@@ -131,6 +113,80 @@ impl QuoteClient {
             }
         }
         Ok(())
+    }
+}
+
+/// Single-owner read session. A failed wire/result invalidates the connection;
+/// callers must use QuoteClient::connect again. Drop releases the socket.
+pub struct QuoteSession {
+    stream: Option<TcpStream>,
+    timeout: Duration,
+    sequence: u32,
+}
+
+impl QuoteSession {
+    fn authenticate(mut stream: TcpStream, timeout: Duration, deadline: Instant) -> Result<Self> {
+        let mut io = DeadlineStream {
+            stream: &mut stream,
+            deadline,
+        };
+        let auth = wire::request(
+            &mut io,
+            1,
+            "authPid",
+            doc! { "pid": std::process::id() as i32 },
+        )?;
+        if !matches!(auth.get_bool("success"), Ok(true)) {
+            return Err("normal caller-PID authentication rejected".into());
+        }
+        Ok(Self {
+            stream: Some(stream),
+            timeout,
+            sequence: 1,
+        })
+    }
+
+    /// Fresh request/response on the retained socket; no quote-result cache.
+    pub fn get_full_tick(&mut self, code_list: &[&str]) -> Result<Document> {
+        validate_symbols(code_list)?;
+        let result = self.query(code_list);
+        if result.is_err() {
+            drop(self.stream.take());
+        }
+        result
+    }
+
+    fn query(&mut self, code_list: &[&str]) -> Result<Document> {
+        let stream = self
+            .stream
+            .as_mut()
+            .ok_or("quote session closed; connect a new session")?;
+        self.sequence = self
+            .sequence
+            .checked_add(1)
+            .ok_or("quote sequence exhausted; connect a new session")?;
+        let mut io = DeadlineStream {
+            stream,
+            deadline: Instant::now() + self.timeout,
+        };
+        let symbols = code_list
+            .iter()
+            .map(|s| Bson::String((*s).into()))
+            .collect::<Vec<_>>();
+        let reply = wire::request(
+            &mut io,
+            self.sequence,
+            "getFullTick",
+            doc! { "stockMarkets": symbols },
+        )?;
+        let result = reply.get_document("result")?;
+        if result
+            .iter()
+            .any(|(key, value)| !selected(key, code_list) || !matches!(value, Bson::Document(_)))
+        {
+            return Err("invalid full-tick symbol mapping".into());
+        }
+        Ok(result.clone())
     }
 }
 
