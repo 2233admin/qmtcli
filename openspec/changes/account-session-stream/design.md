@@ -699,3 +699,21 @@ suite is claimed. Diff whitespace check passed. Preserve local raw data, version
 SDK source extracts and hashes in `F:/projects/_research/qmt-ida-20261031/recovery/rust1991/`.
 Only report/OpenSpec files changed in this slice; no tracker/KB duplicate truth,
 remote push or merge. Keep overall change in_review and live acceptance unchecked.
+
+## Rust product architecture review, 2026-11-01
+
+User requested architecture review before delivering a usable Rust QMTCLI.
+See [the review and candidate](rust-architecture-review.md): existing Rust main
+is one-shot quote-only; native accounts still depend on a pinned vendor C++ DLL
+in an isolated worker. Recommended candidate is a Rust parent plus the same exe
+as a private account worker, sharing Dispatcher/Runtime across public adapters.
+Current Python MCP does not pass the retained AccountSession; avoid copying that
+lifetime difference into the new product. Preserve explicit native request subset,
+envelopes/ids, non-atomic snapshots and fail-closed version boundaries.
+
+This is a self-review/design candidate, not approval of new APIs/dependencies or
+an implemented Rust account backend. Worker FFI, real retained quote sessions,
+packaging and MCP scope remain explicit decision/verification points. No code,
+config, QMT instance or deployment was modified. Code Intel completed PASS on
+current source: `1793541903515-79844-core/run-complete.json`. Only documentation
+changed afterward; no new unit/live/performance result is claimed.
