@@ -59,3 +59,20 @@ Snapshot connections are owned per request: the earlier unsupported long-running
 download frame must be identified before quote connection reuse is accepted.
 Historical payload decoding, push delivery and auction semantics remain separate
 unaccepted work; this slice must not claim full native market coverage.
+
+## Rust direct-client experiment
+
+User authorized trying Rust against the official get_full_tick business contract.
+Keep this in experiments/native-quote-rs, not a replacement of the Python CLI.
+Acceptance: compiled Rust executable/library directly authenticates its actual PID
+and reads two-symbol snapshots from the pinned MiniQMT runtime, with no Python
+subprocess, SDK import or broker DLL load; compare fields/integers to SDK 3.11 and
+floats at 1e-12 absolute tolerance. Keep loopback, per-query socket ownership,
+timeouts and read-only method allowlist. Test framing/CRC failures and cache misses.
+Reuse MongoDB's maintained bson crate plus flate2, crc32fast and sha2; the latter
+three and serde_json are already cached locally. bson is newly fetched through
+Cargo; use its lockfile, no custom BSON codec or C compression backend. These
+libraries fit the exact serialization/compression/hash boundaries and avoid
+Python ABI dependencies. The noncanonical named BSON array needs only the same
+small container-tag adaptation already validated in the Python implementation.
+No history, subscription, account queries, trading writes or speedup claim.

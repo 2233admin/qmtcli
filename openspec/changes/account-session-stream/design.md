@@ -457,3 +457,52 @@ tracker entry or duplicate KB state. The reusable interface is documented in
 docs/native-quote.md; research acceptance script/receipt remain private outside
 the repository. No vendor code, credentials, trade writes or package installs.
 Main checkout's pre-existing dirty files are preserved. No remote push/merge.
+
+## Rust direct full-tick experiment — 2026-11-01
+
+Question answered: a compiled Rust library/executable can request MiniQMT directly
+using the official get_full_tick business shape, with no Python child process or
+broker DLL loads. Isolated implementation: experiments/native-quote-rs, publish=false,
+locked dependencies, not wired into the formal Python CLI backend. Rust 1.99.0 /
+Cargo 1.99.0, Windows x64 GNU toolchain. Each request validates the same five pinned
+runtime files by reading SHA256 only, uses its own real PID and loopback socket,
+then releases that socket through Drop on either success or error. No trade writes.
+
+The library accepts explicit security codes and official market selectors SH/SZ.
+It returns bson::Document with original numeric types; CLI exports a JSON envelope.
+Maintained wheels: MongoDB bson 3.1.0 with serde/serde_json-1, flate2 1.1.10,
+crc32fast 1.5.2 (existing cached version), serde_json 1.0.154, sha2 0.11.1.
+Cargo.lock pins transitive dependencies. Custom code only adapts the known local
+framing, named BSON params array, PID auth, deadlines and response identity.
+
+The official market control contained 51,196 records (~20 MB JSON), so the prototype
+uses bounded streaming decompression, 16 MiB frames / 64 MiB decoded payload, with
+16 KiB output chunks. These bounds are local experiment limits, not official API
+limits. An initial real market request failed because FlushDecompress::Finish on
+the first call assumes the whole output fits. The primary flate2 source documented
+that constraint; changed to None for streaming, and added a >64 KiB positive
+regression alongside overflow/truncation/trailer controls. This failure is retained
+in rust-native-quote-deflate-negative.json, not recast as an environment failure.
+
+| Conclusion | Verification / primary receipt | Result and limits |
+|---|---|---|
+| Rust directly retrieves real quotes | verify-rust-native-quote.py with PATH restricted to Windows System32; executable PE imports inspected | Ten two-stock reads succeeded, both 18 fields and five-level arrays; explicit invalid-input/runtime failures and userdata_mini recovery also passed before the market comparison. Imports are seven Windows system DLLs, no Python/xtquant DLL. Rust source has no process spawning or DLL loading. |
+| Initial two-stock SDK acceptance passed | rust-native-quote-acceptance.json and retained market-absolute-negative receipt | Fields/integers/arrays match SDK 3.11; three float differences per snapshot are 1.7763568394002505e-15, within the original absolute 1e-12 criterion. |
+| Whole-market read works but strict SDK JSON float check fails | diagnose-rust-market-differences.py; rust-market-differences.json | SDK and Rust both 51,196 records, same keys/fields/array lengths/integers. 14,086 float values differ, all exactly one ULP; six exceed absolute 1e-12 (index values ~11,000–13,000). This extra criterion remains FAILED; no tolerance was silently widened. Main acceptance script retains passed=false for that extra check. |
+| Rust preserves raw market values exactly | verify-rust-vendor-bson.py; rust-vendor-bson-control.json | 51,196 records, zero value differences versus the installed independent pure-Python vendor BSON decoder; no float tolerance. Both controls use actual caller PID. Research-only Python response limit increased in that process to 64 MiB; no production Python code changed. xtquant not imported, vendor _USE_C false. This localizes the observed discrepancy to the SDK JSON path versus raw BSON; the exact vendor JSON conversion function was not traced. |
+| Final source gates pass | cargo test --locked: 10 passed; cargo clippy --locked --all-targets -- -D warnings; cargo fmt -- --check; pytest -q: 427 passed; ruff check .; git diff --check | Exit 0 for these checks, full command paths use experiments/native-quote-rs/Cargo.toml and the shared no-sync Python dev environment. Raw check stdout is in this turn's tool transcript. No latency/speedup acceptance claim. |
+| Structural check completes | code-intel . --mode normal | PASS / completed; C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793523199005-83856-core/run-complete.json. Only documentation receipts changed after the source scan. |
+
+Private receipts live under F:/projects/_research/qmt-ida-20261031/recovery/five-areas.
+Final executable SHA256 378ad9111d56d2ae5349aa947c537f36870322a3781b0dc5f4d92a142133eb56;
+Cargo.lock SHA256 adea45f7f25f68e7a9f4f9e2f06d776d3c06d82611d8777cd2ae95f52f1b0b57.
+Debug-process samples: two-stock 155.582–204.320 ms; market 5660.247 ms in the exact
+BSON control. Startup/hash checks/JSON export included; no SDK speedup inference.
+
+The experiment answers the user's Rust feasibility question. It does not establish
+bitwise SDK JSON compatibility across every instrument, subscription/idle handling,
+history, auctions, account native IPC or Big QMT. Keep the overall change in_review.
+No new external tracker, duplicate KB state, remote push or merge. Durable contract,
+limits, wheels and failure evidence stay in this OpenSpec and the experiment README.
+No shared process was restarted or stopped; generated targets remain ignored and
+are retained so the user can run the verified executable. Main's dirty files remain.

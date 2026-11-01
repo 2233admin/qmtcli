@@ -34,3 +34,8 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Actual maintenance: full existing daily backup, 5579-code verification, 5571 at target date, 5566 complete eight-session coverage.
 - [x] Two-stock minute/tick updates and real 10-30 auction readback; exception CSV and independent freshness/numeric checks.
 - [ ] Resolve/classify 13 symbol-specific calendar gaps; batch/native download lifecycle remains under review.
+
+- [x] Rust direct full-tick experiment: library/exe, actual PID, no Python/broker DLL runtime dependency.
+- [x] Two-stock official SDK control, real SH/SZ 51,196-record read and exact vendor BSON comparison.
+- [x] Ten Rust tests, Clippy/fmt, existing 427 Python tests and Code Intel structural gate.
+- [ ] Strict market-wide SDK JSON absolute-float parity: six values exceed 1e-12 by one ULP; retained as a failed extra check.
