@@ -65,7 +65,7 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] qmt-trade account/asset/position/order/trade codecs against synthetic Python-derived golden fixtures.
 - [x] Rust read-only account IPC, pinned DLL ABI, correlated/fragmented responses and isolated worker.
 - [x] Owned installed-DLL probe and synthetic-service four-section Rust snapshots, reuse, identity failure/timeout recovery, EOF and parent-death cleanup.
-- [ ] Actual broker account four-section Rust snapshot acceptance via experiments/accept_miniqmt.py; currently blocked by MiniQMT not running/logged in. Synthetic service is not a substitute.
+- [ ] Actual broker account four-section Rust snapshot acceptance via experiments/accept_miniqmt.py; MiniQMT started but login callback reports status 23 (permission unavailable), with no account queue. Synthetic service is not a substitute.
 - [ ] Rust unsolicited account events, subscription lifecycle and recovery consistency.
 - [ ] Rust MCP adapter and actual MiniQMT/Big QMT entry-point acceptance; no capability overclaim.
 - [x] Big QMT formula public reads: pinned normal public route, instrument-detail/daily-bars/full-tick, retained connection and bounded errors.

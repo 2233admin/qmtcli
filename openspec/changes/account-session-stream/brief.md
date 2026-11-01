@@ -192,5 +192,7 @@ Use `experiments/accept_miniqmt.py` for sanitized real-entry acceptance: explici
 actual/synthetic scope, same-account snapshots, rejected input preserving session,
 two-stock snapshots across optional idle, independent sessions and owned-worker EOF.
 This tool does not prove subscriptions, forced broker reconnection or SDK parity.
-Current real-entry preflight: MiniQMT queue missing and 58610 connection timed out;
-only the Big QMT host is running. Actual acceptance requires normal MiniQMT login.
+Before 05:52, MiniQMT was not running. After normal user startup, MiniQMT now runs
+but its login callback records status 23, permission unavailable. The account
+queue remains absent and 58610 still times out. Resolve normal login authorization
+before real acceptance; do not modify licensing or substitute synthetic results.
