@@ -95,6 +95,68 @@ pursued because it is unnecessary for the observations above. The sanitized
 comparison is `recovery/mini-login-permission-comparison.json` under the existing
 research directory; raw logs remain in the installed MiniQMT log directory.
 
+### Reproduced CPU identification defect — subsequent investigation
+
+This is a confirmed local defect, not yet the confirmed cause of login rejection.
+Installed utils.dll matches the original research input byte-for-byte (SHA-256
+fa55c69e4d8a0b449894dcf8bf767dd03e2c0cdc6b33727e0530445950fd14a8).
+Offline IDA extraction identifies:
+
+- utils RVA 0xEF1E0, getCpuSerialNumber: sets a process-global initialized flag
+  before querying WMI, then caches even an empty result without retry.
+- utils RVA 0xEA140: calls CoInitialize for the CPU query and exits on a return
+  value above 1, including RPC_E_CHANGED_MODE (0x80010106).
+- utils RVA 0xEECF0, getCpuIdEx: includes that serial result in the extended CPU
+  description. It is the same component missing from the observed local-info log.
+- User_mini CMachineInfo::initFromLocal (0x37F30) and initFromConfig (0x37530)
+  consume these exports. Config loading can retain existing machine fields; do
+  not infer that every separate request field is empty solely from the log.
+- User_mini doOnceLogin (0x46990) appends cpuid/cpuidex from CMachineInfo and
+  appends localinfo from TradeUtils::genLocalInfo (0x13380). The latter freshly
+  calls getCpuIdEx and produces the observed log string.
+
+Eight isolated diagnostic cases (two repeats of each condition), all exit 0:
+
+| First getter context | CPU identifier result |
+|---|---|
+| STA | present, length 16 |
+| MTA | empty, CoInitialize returns 0x80010106 |
+| MTA failure, then switch to STA and read again | still empty: process cache retained |
+| switch from MTA to STA before first getter call | present, length 16 |
+
+Four additional compatibility controls, all exit 0: fresh MTA first-read fails;
+initializing the getter once on a dedicated STA thread in that same process
+allows a later MTA read to use the correct populated cache (two repeats each).
+This is a demonstrated same-process initialization strategy, not an installed
+client repair. A separate launcher process cannot populate the MiniQMT process's
+cache; do not present running the diagnostic as a login fix.
+
+Current CIM and proper legacy Get-WmiObject queries both retrieve ProcessorId.
+The current system identifier matches the prior successful log in memory; only
+the comparison boolean was saved. The first generic COM automation probe's empty
+property was not corroborated by the proper legacy query and is not evidence of
+a broken system WMI service. Missing WMIC is not the direct call path of this CPU
+getter. Microsoft documents the incompatible COM initialization result:
+https://learn.microsoft.com/en-us/windows/win32/api/objbase/nf-objbase-coinitialize
+
+Probe: research `probe-vendor-cpu-readonly.py`, fixed pinned x64 vendor export in
+short-lived owned subprocesses, with a validated caller-owned 32-byte MSVC return
+buffer. No application attachment, hook, permission change, installed file edit
+or broker login request. Reports export only presence/length/HRESULT and cache
+flags, no hardware identifier bytes. All diagnostic/IDA processes finished.
+Receipts under research `recovery/mini-login-permission/`:
+`cpu-isolated-matrix.json`, `cpu-isolated-fix-control.json`,
+`cpu-system-old-comparison.json`, `utils/summary.json`,
+`TradeUtils/summary.json`, `User-cpu-callers/summary.json`.
+
+What remains unproven: the actual failed client's COM apartment at first read,
+its independent cpuid/cpuidex request field values, and whether the broker's
+authorization decision uses the changed localinfo component. No claim that the
+entitlement was revoked, or that correcting this getter will restore login.
+The client has since exited; no further login was triggered. A normal-login
+comparison with corrected in-client device acquisition, or the broker's binding
+and entitlement audit, is needed to connect this defect to the rejection.
+
 MiniQMT must be started and logged in normally before running the actual profile.
 The user was asked to switch using the existing normal client flow; no client was
 closed, no credentials were requested, and no license/login configuration changed.
