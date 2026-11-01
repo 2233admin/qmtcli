@@ -68,3 +68,5 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [ ] Actual broker account four-section Rust snapshot acceptance; synthetic service is not a substitute.
 - [ ] Rust unsolicited account events, subscription lifecycle and recovery consistency.
 - [ ] Rust MCP adapter and actual MiniQMT/Big QMT entry-point acceptance; no capability overclaim.
+- [x] Big QMT formula public reads: pinned normal public route, instrument-detail/daily-bars/full-tick, retained connection and bounded errors.
+- [x] Offline formula negative controls, CLI contract and current Big QMT public-data acceptance; package standalone Rust release. See verification-big-qmt-public-rust.md; wider OpenSpec remains in_review.

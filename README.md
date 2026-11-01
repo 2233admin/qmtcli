@@ -522,7 +522,9 @@ python scripts/check_doc_drift.py
 ## Rust 原生入口
 
 独立行情核心 `qmt-quote` 和账户核心 `qmt-trade` 已拆入 Cargo workspace，
-统一入口为 `qmtcli-rs`。0.2.0 已实现行情、账户查询 RPC/常驻 JSONL，
+统一入口为 `qmtcli-rs`。0.3.0 新增大 QMT `backend:formula` 的证券资料、
+日线 OHLCV/金额及缓存快照读取，无 Python/xtquant 运行时依赖。
+原有行情、账户查询 RPC/常驻 JSONL 保留，
 账户传输、回包关联和隔离 worker 已通过实际 DLL 与自有合成服务验证。
 真实账户验收及原生增量订阅尚未完成，不能当作完整 SDK 替代品。
 构建、命令和验收边界见 [Rust 使用说明](rust/README.md)。Python 入口继续保留。

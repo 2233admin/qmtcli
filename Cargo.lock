@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "qmt-quote"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bson",
  "crc32fast",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "qmt-trade"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
  "sha2",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "qmtcli-rs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bson",
  "qmt-quote",

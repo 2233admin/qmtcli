@@ -866,3 +866,27 @@ Frozen-input rerun PASS/completed:
 Only this receipt was appended afterward; no source changes after the gate.
 All owned CLI workers are gone and the owned fixture userdata directory is empty.
 Main checkout's four pre-existing unrelated dirty entries remain untouched.
+# Big QMT public formula read adapter
+
+`qmt-quote::formula` owns the Big QMT route separately from MiniQMT wire/auth.
+Primary contract: installed `bin.x64/Lib/site-packages/qmt_api/api.py`,
+`net/RPCClient.py`, `net/RPCBase.py`; observed plain reply tag 0x40, command 3,
+12-byte network-endian header, BSON `{func,params}` with params a document.
+Only getInstrumentDetail and getMarketData are reachable through typed reads.
+Reject nonzero status, wrong sequence, unsupported frame flags, partial `last`,
+trailing BSON, malformed rows, unexpected/duplicate/missing symbols and fields.
+Use existing maintained bson and existing deadline stream; no new dependencies.
+The custom adapter is needed because the installed Python RPC client cannot run
+inside the standalone Rust executable; wire scope stays small and replaceable.
+
+Runtime retains one formula session keyed by canonical installation root and
+timeout. Failed result/IO drops it without replay; next valid request connects.
+Only validated FormulaLib/net fingerprints plus the installation config determine
+the endpoint; force loopback regardless of wildcard bind address in config.
+No SDK authPid, license changes, strategy execution, account methods or new server.
+4 MiB response bound, 100 unique symbols, 1000 latest daily bars, 0.1..60s network
+operation deadline. Reject user time ranges/field selection instead of ignoring.
+Market output normalizes vendor alternating arrays to code -> time/fields rows;
+metadata labels client cache, unknown freshness and local retrieval time.
+Daily OHLCV/amount was independently confirmed with installed vendor RPC on
+2026-11-02; latest cached daily dates 20260731/20260803, ticks 20260521.

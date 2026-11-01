@@ -1,6 +1,6 @@
 # Rust QMTCLI：双核心 workspace
 
-当前版本 0.2.0：行情及账户查询可通过 CLI/RPC/JSONL 调用，支持常驻会话。
+当前版本 0.3.0：新增大 QMT 公开数据读取；行情及账户查询可通过 CLI/RPC/JSONL 调用，支持常驻会话。
 账户 IPC 和隔离 DLL worker 已实现并通过自有合成服务验证；真实账户接入尚待验收。
 尚不能完整替代 Python QMTCLI 或 xtquant。
 
@@ -12,7 +12,53 @@ qmtcli-rs（统一 agent 入口）
 
 两个核心互不依赖。旧 `experiments/native-quote-rs` 只保留 CLI/benchmark
 适配器，依赖同一份 qmt-quote；没有第二份行情协议实现。Cargo.lock 在仓库根。
-Python 入口保留，可作为对照和回退。MCP、历史、订阅和竞价暂不在 Rust 能力中。
+Python 入口保留，可作为对照和回退。MCP、批量历史下载、订阅和竞价专用数据暂不在 Rust 能力中。
+
+## 大 QMT 公开数据读取
+
+使用已安装客户端的正常公式 RPC（`qmt_api` 同一路径），无 Python/xtquant
+运行时依赖。启动大 QMT 并正常登录后，将安装根目录传入 `path`；首版匹配
+已验收的 FormulaLib/net 文件指纹，其他版本会返回明确错误。
+
+```powershell
+Get-Content -Encoding UTF8 .\examples\rust-big-qmt-public.jsonl | .\dist\rust\qmtcli-rs.exe server
+```
+
+或启动一次 `qmtcli-rs.exe server`，逐行发送：
+
+```json
+{"id":1,"command":"instrument-detail","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ"]}
+{"id":2,"command":"daily-bars","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ","600000.SH"],"count":2}
+{"id":3,"command":"full-tick","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ","600000.SH"]}
+```
+
+`instrument-detail` 一次一个代码，返回证券资料的原始字段；`daily-bars` 返回
+最近 count 个日线的 open/high/low/close/volume/amount，未复权，count 默认 2、
+范围 1–1000；`full-tick` 返回每个代码的一个缓存快照，保留盘口等原始数值字段。
+成交量/金额单位沿用客户端字段，不做单位换算。代码仅接受 CODE.SH/SZ/BJ，
+最多 100 个且不重复；并非所有代码都有数据。时间区间、自选字段、其他周期和
+下载参数尚未实现，传入会报错，避免忽略参数后返回错误范围的数据。
+
+成功包的 `data` 为 `{meta, data}`：meta 包含 `source:"client-cache"`、
+`realtime:false`、`freshness:"unknown"` 和 `retrieved_at_unix_ms`（本机取回时间）；
+行情 `data` 按代码映射到 `[{time,fields}]`。`time` 是服务返回的数据时间，
+日线为 YYYYMMDD，快照为 YYYYMMDD HH:MM:SS。取回时间不代表行情更新时间。
+当前客户端实测日线最新 20260803、快照 20260521，不能当作今日实时数据。
+合法空缓存返回空数组；错误、缺失证券或部分回报不会伪造成成功数据。
+
+默认读取安装目录 `config/formulaserver/formulaserver.ini` 的 `[server_formula]`
+address 端口，连接目的地固定 127.0.0.1。`doctor` 配 `backend:formula` 可校验
+文件及配置而不连接。`timeout` 默认 5 秒、范围 0.1–60 秒；单次网络操作使用
+总期限，最大回复 4 MiB，仅支持已验证的明文 BSON 完整回复。压缩、流式回复、
+未知帧和服务拒绝均报错并关闭连接。连续同 path/timeout 请求复用连接；
+输入校验错误不丢弃健康连接，连接失败后下一条请求重连，不重放失败请求。
+EOF 关闭本进程拥有的连接，不关闭 QMT。
+
+实际入口验收可运行（脚本只发上述公开读取请求）：
+
+```powershell
+python .\experiments\accept_big_qmt_public.py --exe .\dist\rust\qmtcli-rs.exe --path D:\DFZQxtqmt_client_real_win64 --receipt .\dist\rust\big-qmt-public-acceptance.json
+```
 
 ## 构建和启动
 
@@ -26,7 +72,8 @@ cargo +1.99.1-x86_64-pc-windows-gnu build --release --locked -p qmtcli-rs
 .\target\release\qmtcli-rs.exe server
 ```
 
-构建和执行都不需要 Python。运行仍要求匹配的已安装 MiniQMT，服务已启动。
+构建和执行都不需要 Python。运行要求匹配的已安装 QMT，服务已启动；
+`backend:native` 是 MiniQMT 接入，`backend:formula` 是上述大 QMT 公开读取。
 `capabilities/schema/examples/status` 不要求 QMT 存在，也不会加载账户 DLL。
 status 的连接字段表示当前进程拥有的会话，不证明柜台登录或实时行情可用。
 
@@ -91,7 +138,8 @@ worker 单条响应上限 16 MiB、列表最多 100000 行，超限报错。
 | 四类账户记录解码 | 已实现，与既有 Python codec 的合成 fixture 对账 |
 | Rust 账户 IPC、DLL ABI、隔离 worker、四项查询 | 已实现；实际安装 DLL + 自有合成服务通过，真实账户验收未完成 |
 | 原生账户事件订阅、重连期间增量补齐 | 未完成，不在能力发现中标可用 |
-| 大 QMT、MCP、历史、订阅、竞价 | 未完成 |
+| 大 QMT 公开证券资料、日线 OHLCV/金额、缓存快照 | 已实现，使用 formula 后端及独立协议配置 |
+| 大 QMT 账户、MCP、批量历史下载、订阅、竞价专用数据 | 未完成 |
 
 ## 验证
 

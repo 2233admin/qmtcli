@@ -1,4 +1,4 @@
-//! Read-only, version-pinned MiniQMT quote core. Not an official QMT SDK.
+//! Read-only, version-pinned MiniQMT and Big QMT quote core. Not an official QMT SDK.
 
 use bson::{Bson, Document, doc};
 use sha2::{Digest, Sha256};
@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub mod formula;
 #[cfg(test)]
 mod session_tests;
 mod wire;

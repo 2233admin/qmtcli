@@ -3,6 +3,55 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 #[test]
+fn formula_public_reads_are_discoverable_and_validate_before_filesystem() {
+    let mut runtime = qmtcli_rs::Runtime::default();
+    let cap = runtime.handle(&json!({"command":"capabilities"}));
+    assert_eq!(cap["data"]["backends"]["formula"]["source"], "client-cache");
+    for command in ["instrument-detail", "daily-bars", "full-tick"] {
+        let result = runtime.handle(&json!({"command":command,"backend":"formula","path":"missing","symbols":["bad symbol"]}));
+        assert_eq!(result["ok"], false);
+        assert!(result["error"].as_str().unwrap().contains("symbols"));
+    }
+}
+
+#[test]
+fn formula_rejects_unsupported_arguments_and_invalid_limits_without_connecting() {
+    let mut runtime = qmtcli_rs::Runtime::default();
+    for (argument, value, error) in [
+        ("count", json!(0), "count"),
+        ("count", json!(1001), "count"),
+        ("count", json!(2.5), "count"),
+        ("timeout", json!(0), "timeout"),
+        ("fields", json!(["close"]), "unsupported formula argument"),
+        (
+            "startTime",
+            json!("20260101"),
+            "unsupported formula argument",
+        ),
+        ("method", json!("passorder"), "unsupported formula argument"),
+    ] {
+        let mut request = json!({"id":31,"command":"daily-bars","backend":"formula","path":"missing","symbols":["000001.SZ"]});
+        request[argument] = value;
+        let response = runtime.handle(&request);
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["id"], 31);
+        assert!(
+            response["error"].as_str().unwrap().contains(error),
+            "{response}"
+        );
+    }
+    let response=runtime.handle(&json!({"command":"full-tick","backend":"formula","path":"missing","symbols":["000001.SZ"],"count":2}));
+    assert!(
+        response["error"]
+            .as_str()
+            .unwrap()
+            .contains("count must be 1")
+    );
+    let status = runtime.handle(&json!({"command":"status"}));
+    assert_eq!(status["data"]["formula_session_connected"], false);
+}
+
+#[test]
 fn discovery_does_not_require_qmt_and_only_advertises_implemented_transports() {
     let result = Command::new(env!("CARGO_BIN_EXE_qmtcli-rs"))
         .arg("capabilities")

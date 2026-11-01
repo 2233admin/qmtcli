@@ -20,6 +20,8 @@ enum Command {
     Status,
     Doctor,
     FullTick,
+    Instrument,
+    Daily,
     Account(Operation),
 }
 struct Spec {
@@ -28,6 +30,16 @@ struct Spec {
     description: &'static str,
 }
 const SPECS: &[Spec] = &[
+    Spec {
+        name: "instrument-detail",
+        command: Command::Instrument,
+        description: "Big QMT formula cached instrument information, one symbol",
+    },
+    Spec {
+        name: "daily-bars",
+        command: Command::Daily,
+        description: "Big QMT formula latest OHLCV/amount daily bars, unadjusted client cache",
+    },
     Spec {
         name: "asset",
         command: Command::Account(Operation::Asset),
@@ -94,6 +106,7 @@ struct QuoteKey {
 #[derive(Default)]
 pub struct Runtime {
     quote: Option<(QuoteKey, QuoteSession)>,
+    formula: Option<(PathBuf, Duration, qmt_quote::formula::FormulaSession)>,
     account: AccountSession,
 }
 
@@ -107,8 +120,9 @@ fn capabilities() -> Value {
         "commands":SPECS.iter().filter(|s|!matches!(s.command,Command::Account(_)) || qmt_trade::TRANSPORT_AVAILABLE).map(|s|json!({"name":s.name,"description":s.description})).collect::<Vec<_>>(),
         "limits":{"symbols":1000,"request_bytes":MAX_REQUEST_BYTES},
         "account_transport_implemented":qmt_trade::TRANSPORT_AVAILABLE,
+        "backends":{"native":{"commands":["full-tick","asset","positions","orders","trades","account-snapshot"]},"formula":{"commands":["instrument-detail","daily-bars","full-tick"],"source":"client-cache","realtime":false,"limits":{"symbols":100,"daily_count":1000,"frame_bytes":qmt_quote::formula::MAX_FRAME},"daily_fields":["open","high","low","close","volume","amount"],"daily_dividend_type":"none","streaming":false,"compression":false}},
         "unavailable":{"account_subscriptions":"unsolicited native events not implemented","mcp":"not implemented",
-                       "history":"not implemented","subscriptions":"not implemented"}})
+                       "bulk_history":"not implemented; formula daily close reads available","subscriptions":"not implemented"}})
 }
 
 impl Runtime {
@@ -141,21 +155,38 @@ impl Runtime {
             "command":{"enum":SPECS.iter().flat_map(|s|if s.name.contains('-') {
                 vec![s.name.to_owned(),s.name.replace('-',"_")]
             } else {vec![s.name.to_owned()]}).collect::<Vec<_>>()},
-            "backend":{"const":"native"},"path":{"type":"string","minLength":1},"symbols":{"type":"array","minItems":1,"maxItems":1000,"items":{"type":"string","pattern":"^[!-~]{1,64}$"}},
+            "backend":{"enum":["native","formula"]},"path":{"type":"string","minLength":1},"symbols":{"type":"array","minItems":1,"maxItems":1000,"items":{"type":"string","pattern":"^[!-~]{1,64}$"}},
+            "count":{"type":"integer","minimum":1,"maximum":1000},
             "account":{"type":"string","minLength":1,"maxLength":23,"pattern":"^[ -~]+$"},"account_type":{"enum":["STOCK","stock"]},"cancelable_only":{"type":"boolean"},
             "quote_port":{"type":"integer","minimum":1,"maximum":65535},"timeout":{"type":"number","minimum":0.1,"maximum":60}},
             "allOf":[
+                {"if":{"properties":{"command":{"enum":["instrument-detail","instrument_detail","daily-bars","daily_bars"]}}},"then":{"required":["backend","path","symbols"],"properties":{"backend":{"const":"formula"}}}},
+                {"if":{"properties":{"backend":{"const":"formula"}},"required":["backend"]},"then":{"properties":{"symbols":{"maxItems":100,"uniqueItems":true,"items":{"type":"string","pattern":"^[A-Za-z0-9]{1,24}\\.(SH|SZ|BJ)$"}}}}},
+                {"if":{"properties":{"command":{"enum":["instrument-detail","instrument_detail"]}}},"then":{"properties":{"symbols":{"maxItems":1}}}},
+                {"if":{"properties":{"backend":{"const":"formula"},"command":{"enum":["instrument-detail","instrument_detail","full-tick","full_tick"]}},"required":["backend","command"]},"then":{"properties":{"count":{"const":1}}}},
+                {"if":{"properties":{"backend":{"const":"formula"}},"required":["backend"]},"then":{"propertyNames":{"enum":["id","command","backend","path","symbols","count","timeout"]}}},
                 {"if":{"properties":{"command":{"enum":["full-tick","full_tick"]}}},"then":{"required":["backend","path","symbols"]}},
                 {"if":{"properties":{"command":{"const":"doctor"}}},"then":{"required":["path"]}},
-                {"if":{"properties":{"command":{"enum":["asset","positions","orders","trades","account-snapshot","account_snapshot"]}}},"then":{"required":["backend","path","account"]}}
+                {"if":{"properties":{"command":{"enum":["asset","positions","orders","trades","account-snapshot","account_snapshot"]}}},"then":{"required":["backend","path","account"],"properties":{"backend":{"const":"native"}}}}
             ]})),
             Command::Examples => Ok(json!([{"id":1,"command":"full_tick","backend":"native",
                 "path":"D:\\QMT","symbols":["600000.SH","000001.SZ"]},
-                {"id":2,"command":"account_snapshot","backend":"native","path":"D:\\QMT","account":"YOUR_ACCOUNT"}])),
+                {"id":2,"command":"account_snapshot","backend":"native","path":"D:\\QMT","account":"YOUR_ACCOUNT"},
+                {"id":3,"command":"instrument-detail","backend":"formula","path":"D:\\QMT","symbols":["000001.SZ"]},
+                {"id":4,"command":"daily-bars","backend":"formula","path":"D:\\QMT","symbols":["000001.SZ","600000.SH"],"count":2},
+                {"id":5,"command":"full-tick","backend":"formula","path":"D:\\QMT","symbols":["000001.SZ","600000.SH"]}])),
             Command::Status => Ok(json!({"implementation":"rust","scope":"this process",
                 "quote_session_connected":self.quote.is_some(),"broker_login":"not checked",
+                "formula_session_connected":self.formula.is_some(),
                 "account_transport_implemented":qmt_trade::TRANSPORT_AVAILABLE,"account_transport_available":self.account.connected(),"native_generation":self.account.generation()})),
             Command::Doctor => {
+                if request["backend"] == "formula" {
+                    let (root, _) = formula_key(request)?;
+                    let port = qmt_quote::formula::endpoint(&root)?;
+                    return Ok(
+                        json!({"formula_profile":"matched","host":"127.0.0.1","port":port,"service_connection":"not attempted","source":"client-cache"}),
+                    );
+                }
                 let key = quote_key(request)?;
                 QuoteClient::new(&key.root).validate_runtime()?;
                 Ok(
@@ -165,9 +196,83 @@ impl Runtime {
                     "account_service_queue_present":key.root.join("userdata_mini/up_queue_xtquant").is_file()}),
                 )
             }
+            Command::FullTick if request["backend"] == "formula" => {
+                self.formula_read(request, qmt_quote::formula::ReadKind::Snapshot)
+            }
             Command::FullTick => self.full_tick(request),
+            Command::Instrument => {
+                self.formula_read(request, qmt_quote::formula::ReadKind::Instrument)
+            }
+            Command::Daily => self.formula_read(request, qmt_quote::formula::ReadKind::Daily),
             Command::Account(operation) => self.account_query(request, operation),
         }
+    }
+
+    fn formula_read(
+        &mut self,
+        request: &Value,
+        kind: qmt_quote::formula::ReadKind,
+    ) -> Result<Value> {
+        if request["backend"] != "formula" {
+            return Err("public Big QMT reads require explicit backend=formula".into());
+        }
+        for key in request
+            .as_object()
+            .ok_or("request must be an object")?
+            .keys()
+        {
+            if ![
+                "id", "command", "backend", "path", "symbols", "count", "timeout",
+            ]
+            .contains(&key.as_str())
+            {
+                return Err(format!("unsupported formula argument: {key}").into());
+            }
+        }
+        let symbols = request["symbols"]
+            .as_array()
+            .ok_or("symbols must be an array")?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_owned)
+                    .ok_or("symbols must contain strings")
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let count = match request.get("count") {
+            None => {
+                if matches!(kind, qmt_quote::formula::ReadKind::Daily) {
+                    2
+                } else {
+                    1
+                }
+            }
+            Some(v) => v.as_u64().ok_or("count must be an integer")?,
+        };
+        if !matches!(kind, qmt_quote::formula::ReadKind::Daily) && count != 1 {
+            return Err("count must be 1 for instrument-detail/full-tick".into());
+        }
+        let query = qmt_quote::formula::PublicRead::new(kind, symbols, count)?;
+        let (root, timeout) = formula_key(request)?;
+        if self
+            .formula
+            .as_ref()
+            .is_none_or(|(r, t, _)| r != &root || *t != timeout)
+        {
+            self.formula = None;
+            let session = qmt_quote::formula::FormulaSession::connect(&root, timeout)?;
+            self.formula = Some((root, timeout, session));
+        }
+        let result = self
+            .formula
+            .as_mut()
+            .ok_or("missing formula session")?
+            .2
+            .read(&query);
+        if result.is_err() {
+            self.formula = None;
+        }
+        result
     }
 
     fn account_query(&mut self, request: &Value, mut operation: Operation) -> Result<Value> {
@@ -269,6 +374,24 @@ impl Runtime {
             }
         }
     }
+}
+
+fn formula_key(request: &Value) -> Result<(PathBuf, Duration)> {
+    let path = request["path"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or("requires an explicit QMT installation root")?;
+    let timeout = match request.get("timeout") {
+        None => 5.0,
+        Some(v) => v.as_f64().ok_or("timeout must be numeric")?,
+    };
+    if !timeout.is_finite() || !(0.1..=60.0).contains(&timeout) {
+        return Err("timeout must be 0.1 to 60 seconds".into());
+    }
+    Ok((
+        PathBuf::from(path).canonicalize()?,
+        Duration::from_secs_f64(timeout),
+    ))
 }
 
 fn quote_key(request: &Value) -> Result<QuoteKey> {

@@ -168,3 +168,15 @@ worker timeout/crash and owned DLL queue probes before any real-service claim.
 Native unsolicited event semantics, subscriptions and real account acceptance
 remain distinct; do not fabricate events from repeated snapshots or call query
 responses a complete SDK replacement. Existing read-only boundaries persist.
+# Approved slice: Big QMT public reads (2026-11-02)
+
+Deliver the installed FormulaLib/qmt_api public read path in qmt-quote and Rust
+QMTCLI, with explicit `backend:formula`: instrument-detail (one symbol),
+daily-bars (latest 1..1000 daily OHLCV/amount bars), full-tick (one cached snapshot).
+Follow the installed vendor's named-document BSON protocol, not MiniQMT auth/wire.
+No arbitrary methods, strategy execution, account queries or subscriptions in this
+slice. Pin FormulaLib/net fingerprints, resolve the installed formula config port,
+connect only to loopback, retain one owned session, bound frames and deadlines,
+invalidate failed sessions without replay, and label cache source and timestamps.
+Acceptance: offline protocol/normalization/CLI tests, current Big QMT all three
+commands through the packaged standalone Rust exe, discovery/schema and cleanup.

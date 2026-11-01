@@ -1,0 +1,3 @@
+{"id":1,"command":"instrument-detail","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ"]}
+{"id":2,"command":"daily-bars","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ","600000.SH"],"count":2}
+{"id":3,"command":"full-tick","backend":"formula","path":"D:\\DFZQxtqmt_client_real_win64","symbols":["000001.SZ","600000.SH"]}
