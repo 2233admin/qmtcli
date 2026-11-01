@@ -157,6 +157,19 @@ The client has since exited; no further login was triggered. A normal-login
 comparison with corrected in-client device acquisition, or the broker's binding
 and entitlement audit, is needed to connect this defect to the rejection.
 
+### Deferred optimization handoff — user decision 2026-11-02
+
+The user requested recording this finding for later optimization; no further
+client modification or login experiment is being performed now. Reuse the twelve
+isolated controls and pinned source above rather than restarting the investigation.
+On resumption, first establish the actual client initialization context and
+whether its device information affects the rejection. Then evaluate supported
+client compatibility fixes: initialize acquisition in a compatible thread context,
+avoid permanently caching failed/empty reads, and preserve COM initialization
+ownership. Require a normal-login before/after comparison before claiming recovery.
+Retain the distinction between the reproduced getter defect and the unproven
+authorization cause. No credentials or hardware identifier values belong in receipts.
+
 MiniQMT must be started and logged in normally before running the actual profile.
 The user was asked to switch using the existing normal client flow; no client was
 closed, no credentials were requested, and no license/login configuration changed.

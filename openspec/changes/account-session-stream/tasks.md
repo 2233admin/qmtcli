@@ -71,3 +71,4 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Big QMT formula public reads: pinned normal public route, instrument-detail/daily-bars/full-tick, retained connection and bounded errors.
 - [x] Offline formula negative controls, CLI contract and current Big QMT public-data acceptance; package standalone Rust release. See verification-big-qmt-public-rust.md; wider OpenSpec remains in_review.
 - [x] MiniQMT-first follow-up: formal sanitized account/quote/reuse/EOF acceptance runner; owned 40-snapshot recovery regression and separate formal-runner synthetic acceptance passed. See verification-miniqmt-priority.md.
+- [ ] Deferred optimization candidate (user decision 2026-11-02): CPU identification COM initialization and empty-result caching. Resume from verification-miniqmt-priority.md and its isolated receipts; establish actual login causality before any client change. Not a confirmed entitlement-loss cause or a deployed fix.
