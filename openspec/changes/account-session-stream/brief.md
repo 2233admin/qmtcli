@@ -180,3 +180,17 @@ connect only to loopback, retain one owned session, bound frames and deadlines,
 invalidate failed sessions without replay, and label cache source and timestamps.
 Acceptance: offline protocol/normalization/CLI tests, current Big QMT all three
 commands through the packaged standalone Rust exe, discovery/schema and cleanup.
+
+## MiniQMT first (2026-11-02)
+
+User priority: finish the read-only MiniQMT Rust backend before extending Big QMT.
+First close the actual four-section account and retained quote-session acceptance;
+then native history/market subscriptions/auction semantics and account events with
+recovery consistency. Keep qmt-quote/qmt-trade independent and QMTCLI agent-facing.
+Order placement/cancellation/transfers remain outside this repository's contract.
+Use `experiments/accept_miniqmt.py` for sanitized real-entry acceptance: explicit
+actual/synthetic scope, same-account snapshots, rejected input preserving session,
+two-stock snapshots across optional idle, independent sessions and owned-worker EOF.
+This tool does not prove subscriptions, forced broker reconnection or SDK parity.
+Current real-entry preflight: MiniQMT queue missing and 58610 connection timed out;
+only the Big QMT host is running. Actual acceptance requires normal MiniQMT login.

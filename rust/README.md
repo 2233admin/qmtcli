@@ -88,7 +88,7 @@ server 每行接收一个 JSON 请求，每行输出一个结果；短调用可�
 ```
 
 把 path 改为真实 QMT 安装根目录或 userdata_mini。full_tick/full-tick 都接受。
-业务请求必须显式 `backend:native`，不把 Python 的 SDK 默认值悄悄改成 native。
+MiniQMT 业务请求必须显式 `backend:native`，不把 Python 的 SDK 默认值悄悄改成 native。
 行情端口默认 58610，可指定 `quote_port`；`timeout` 为 0.1–60 秒，默认 5 秒。
 doctor 可通过 RPC 指定 path，核验行情/账户文件指纹和账户队列是否存在，不建立服务连接。
 
@@ -142,6 +142,23 @@ worker 单条响应上限 16 MiB、列表最多 100000 行，超限报错。
 | 大 QMT 账户、MCP、批量历史下载、订阅、竞价专用数据 | 未完成 |
 
 ## 验证
+
+MiniQMT 真实只读验收工具（开发验收使用 Python 和 psutil；Rust 运行不需要它们）：
+
+```powershell
+$env:QMTCLI_ACCOUNT = Read-Host 'MiniQMT account (not password)'
+python .\experiments\accept_miniqmt.py --exe .\dist\rust\qmtcli-rs.exe --path D:\DFZQxtqmt_client_real_win64 --scope actual-miniqmt --snapshots 2 --idle-seconds 65 --receipt .\dist\rust\miniqmt-live.json
+Remove-Item Env:\QMTCLI_ACCOUNT
+```
+
+需先正常启动、登录 MiniQMT。该工具不切换客户端、不修改登录配置。
+无服务队列或未提供账户时记录 blocked；不把它记为验收成功。
+账户仅从指定环境变量读取并通过 stdin 发送，不进入命令行或报告；报告仅记录
+身份匹配标记、有限数检查、记录数、代次、公开行情时间及进程退出状态。
+默认读取两次四项快照，再验证非法账户类型不会破坏会话、行情与账户会话独立、
+空闲后可继续读取、EOF 关闭自己的 worker。`--snapshots` 支持 2–40 次，
+`--idle-seconds` 支持 0–120 秒。合成服务必须标为 `--scope synthetic`。
+这些检查不代表行情推送、账户事件、实际柜台断线恢复或完整 SDK 字段对账已完成。
 
 ```powershell
 cargo +1.99.1-x86_64-pc-windows-gnu test --release --locked --workspace --all-targets
