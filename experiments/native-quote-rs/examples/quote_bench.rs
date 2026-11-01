@@ -22,16 +22,20 @@ fn codes(count: usize) -> Vec<String> {
     }
 }
 
-fn batch(session: &mut QuoteSession, command: &Value) -> Result<Value> {
+fn batch(client: &QuoteClient, session: &mut QuoteSession, command: &Value) -> Result<Value> {
     let count = command["count"].as_u64().ok_or("count")? as usize;
     let iterations = command["iterations"].as_u64().ok_or("iterations")? as usize;
     let warmup = command["warmup"].as_u64().unwrap_or(3) as usize;
-    if !matches!(count, 2 | 1000) || !(1..=5000).contains(&iterations) || warmup > 20 {
+    if !matches!(count, 2 | 100 | 500 | 1000) || !(1..=5000).contains(&iterations) || warmup > 20 {
         return Err("invalid benchmark bounds".into());
     }
     let mode = command["mode"].as_str().ok_or("mode")?;
     if !matches!(mode, "snapshot" | "json" | "decode") {
         return Err("invalid benchmark mode".into());
+    }
+    let reconnect = command["reconnect"].as_bool().unwrap_or(false);
+    if reconnect && mode == "decode" {
+        return Err("reconnect requires a network query".into());
     }
     let symbols = codes(count);
     let symbols = symbols.iter().map(String::as_str).collect::<Vec<_>>();
@@ -48,6 +52,8 @@ fn batch(session: &mut QuoteSession, command: &Value) -> Result<Value> {
             wire::read_reply(&mut Cursor::new(&frame), 1)?
                 .get_document("result")?
                 .clone()
+        } else if reconnect {
+            client.connect()?.get_full_tick(&symbols)?
         } else {
             session.get_full_tick(&symbols)?
         };
@@ -86,16 +92,17 @@ fn run() -> Result<()> {
     if args.len() < 2 {
         return Err("usage: quote_bench <root> <fixture-port> [--once]".into());
     }
-    let mut session = QuoteClient::new(&args[0])
+    let client = QuoteClient::new(&args[0])
         .with_port(args[1].parse()?)
-        .with_timeout(Duration::from_secs(10))
-        .connect()?;
+        .with_timeout(Duration::from_secs(10));
+    let mut session = client.connect()?;
     println!(
         "READY:{}",
         json!({"pid":std::process::id(),"runtime":if cfg!(debug_assertions) {"rust-debug"} else {"rust-release"}})
     );
     if args.iter().any(|arg| arg == "--once") {
         let result = batch(
+            &client,
             &mut session,
             &json!({"count":2,"mode":"json","iterations":1,"warmup":0}),
         )?;
@@ -104,7 +111,7 @@ fn run() -> Result<()> {
     }
     for line in io::stdin().lock().lines() {
         let command: Value = serde_json::from_str(&line?)?;
-        let result = batch(&mut session, &command)?;
+        let result = batch(&client, &mut session, &command)?;
         println!("BENCH:{result}");
     }
     Ok(())

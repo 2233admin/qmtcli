@@ -111,3 +111,14 @@ At least five alternating blocks per case, median/range, shared-host load, clien
 CPU/memory and separate untimed profile. Use existing hyperfine and psutil where
 appropriate; custom adapters only connect actual APIs to the common fixture.
 No real SDK-vs-native QMT speedup claim while port 58610 is unavailable.
+
+## Performance ablation
+
+User authorized running the ablation through completion. Hold payload, runtime,
+validation and process lifetime fixed; vary retained/recreated session and JSON
+rendering in paired alternating blocks, then sweep 2/100/500/1000 records within
+the existing public 1000-symbol limit. No weakened production checks. Rust session
+recreation includes its actual runtime fingerprints, which must be distinguished
+from Python socket/auth recreation. SDK retained results remain a reference; no
+assumption that its reconnect method creates a fresh connection. Preserve raw
+samples and verify query/auth deltas against the owned fixture.

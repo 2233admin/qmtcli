@@ -647,3 +647,30 @@ and that suite was not rerun for this benchmark-only example/docs slice.
 Code Intel normal completed PASS on frozen source:
 `C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793538852150-96940-core/run-complete.json`.
 Only this documentation receipt was adjusted afterward. `git diff --check` passes.
+
+## Connection/JSON/batch ablation receipt, 2026-11-01
+
+User authorized completing the ablation directly. See
+[ablation report](../../../docs/quote-ablation.md) for five alternating blocks per
+condition, ranges, paired JSON deltas, the fixed 1000-symbol limit and the exact
+recreation boundary. Rust recreation deliberately includes actual fingerprint
+checks; Python recreates socket/auth with its already loaded codec. No production
+validation or ownership behavior was weakened. Validation/copy-cost isolation is
+still pending; it is not an accepted optimization or part of this three-factor run.
+
+Owned synthetic replay: 160 timed blocks, 12,250 timed queries plus 320 warmups,
+483 authenticated connections and zero request errors. All clients and fixtures
+exited normally. Independent untimed profiles and three malformed-frame negative
+controls passed. One untimed SDK readiness timeout is preserved separately; no
+unsupported root cause was assigned. Local artifacts and adapter/binary hashes:
+`F:/projects/_research/qmt-ida-20261031/recovery/ablation/final.json`.
+
+Verification: Rust all-target tests passed (18 library plus 7 reused example wire
+tests), Clippy warnings denied, fmt, shared-venv ruff and diff whitespace checks
+passed. Production Python is unchanged; its previous 427-test suite result is not
+claimed as a rerun. Code Intel normal on frozen source completed PASS:
+`C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793539904788-4416-core/run-complete.json`.
+Only documentation receipts/count arithmetic were adjusted afterward. Retain
+OpenSpec in_review and the real-QMT acceptance gaps; no tracker or KB truth copy,
+remote push or merge. The nonresponsive task-owned rg process was identified by
+PID/parent/SDK-source command and terminated; no shared process was stopped.

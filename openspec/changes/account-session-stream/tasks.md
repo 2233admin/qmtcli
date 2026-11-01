@@ -53,3 +53,6 @@ full live event/reconnect validation. See design.md for the live limit and recei
 - [x] Performance: five alternating replay blocks of Rust release/native Python 3.15.2/SDK Python 3.11.16; startup, retained query, JSON and decoder components separated.
 - [x] Validate 10,115 replay queries with zero request errors, expected per-block counts, independent partial-frame/CRC negative controls and normal owned-process cleanup.
 - [ ] Same-condition real QMT performance, retained Rust live heartbeat/recovery and agent end-to-end latency acceptance.
+
+- [x] Connection/JSON/batch ablation: five alternating blocks for 2/100/500/1000 records; 12,570 queries, zero errors, expected query/auth/socket deltas, separate profiles and negative controls.
+- [ ] Isolate returned-code validation and BSON ownership copying costs; production checks remain intact.
