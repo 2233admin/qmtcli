@@ -674,3 +674,28 @@ Only documentation receipts/count arithmetic were adjusted afterward. Retain
 OpenSpec in_review and the real-QMT acceptance gaps; no tracker or KB truth copy,
 remote push or merge. The nonresponsive task-owned rg process was identified by
 PID/parent/SDK-source command and terminated; no shared process was stopped.
+
+## Official path review / Rust 1.99.1 receipt, 2026-11-01
+
+See [official-path and current-stable report](../../../docs/quote-rust1991.md).
+Installed SDK full-tick parses native JSON; byte subscription callbacks decode
+BSON; a historical K-line path uses np.frombuffer before DataFrame construction.
+Primary official docs distinguish whole-quote subscriptions and bounded cached
+history reads. These do not establish a universal best 500-record batch.
+
+rustup and the official release page confirmed stable 1.99.1. Installed the pinned
+GNU toolchain plus its Clippy/rustfmt side-by-side, leaving default 1.99.0 intact.
+Same source/lockfile release compiler A/B plus native Python and SDK references:
+200 timed blocks, 17,920 network queries (17,600 timed + 320 warmup), 4400 timed
+decoder-only operations, zero request errors. All owned processes exited normally.
+1000-record JSON medians old/new Rust: 12.838 / 13.620 ms, overlapping ranges and
+no consistent upgrade gain across batch sizes. Do not infer a regression or
+production service speedup. No return validation/copy changes were made.
+
+Actual checks: cargo +1.99.1 release all-target tests passed (18 library, 7 reused
+example wire tests), Clippy release all-targets warnings denied and fmt check
+passed. Source and lockfile were unchanged; no repeated structural scan or Python
+suite is claimed. Diff whitespace check passed. Preserve local raw data, versions,
+SDK source extracts and hashes in `F:/projects/_research/qmt-ida-20261031/recovery/rust1991/`.
+Only report/OpenSpec files changed in this slice; no tracker/KB duplicate truth,
+remote push or merge. Keep overall change in_review and live acceptance unchecked.

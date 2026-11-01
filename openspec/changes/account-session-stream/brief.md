@@ -122,3 +122,14 @@ recreation includes its actual runtime fingerprints, which must be distinguished
 from Python socket/auth recreation. SDK retained results remain a reference; no
 assumption that its reconnect method creates a fresh connection. Preserve raw
 samples and verify query/auth deltas against the owned fixture.
+
+## Official data-path review and current-stable Rust rerun
+
+User requested the official treatment of JSON/batch costs and a current Rust run.
+Read installed SDK source plus primary docs: distinguish full-tick native JSON
+parsing from BSON callback delivery and buffered historical data. Verify the latest
+stable via official release and rustup; install a pinned side-by-side toolchain,
+leaving defaults intact. Compare unchanged Rust source/lockfile under 1.99.0 and
+1.99.1 in the same five interleaved replay rounds, retained snapshots, JSON and
+decoder components, plus native Python/SDK references. Preserve original receipts;
+do not attribute noise or a compiler bump to a production architecture change.

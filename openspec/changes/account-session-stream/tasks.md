@@ -56,3 +56,5 @@ full live event/reconnect validation. See design.md for the live limit and recei
 
 - [x] Connection/JSON/batch ablation: five alternating blocks for 2/100/500/1000 records; 12,570 queries, zero errors, expected query/auth/socket deltas, separate profiles and negative controls.
 - [ ] Isolate returned-code validation and BSON ownership copying costs; production checks remain intact.
+
+- [x] Review installed SDK JSON/BSON/buffer paths against primary docs; verify Rust 1.99.1 stable and run unchanged-source compiler A/B with 17,920 replay queries, zero errors and five interleaved blocks per condition.
