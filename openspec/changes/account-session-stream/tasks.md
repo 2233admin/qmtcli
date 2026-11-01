@@ -7,7 +7,7 @@
 - [x] Full pytest, ruff, parseable examples and before/after connection receipt.
 - [x] Record live verification or its concrete limits; inspect changes and owned processes.
 
-Implementation checks: 400 tests pass, ruff and diff whitespace checks pass.
+Implementation checks: 427 tests pass, ruff and diff whitespace checks pass.
 These checkboxes record completed engineering checks, not principal acceptance or
 full live event/reconnect validation. See design.md for the live limit and receipts.
 
@@ -27,6 +27,9 @@ full live event/reconnect validation. See design.md for the live limit and recei
 
 - [x] Research-only native quote RPC snapshot, subscription lifecycle and history probes on Python 3.15.2, with frame negative controls and real supply failure notification.
 - [ ] Formal QMTCLI native market integration, live market push and auction semantic acceptance (not established by the probe).
+  - [x] Formal native full-tick snapshot CLI/RPC/JSONL/MCP integration with explicit backend.
+  - [x] Python 3.15.2 entry-point acceptance against SDK 3.11; no xtquant imports or compiled BSON.
+  - [ ] Persistent native quote connection, history decoding, live push and auction semantics.
 
 - [x] Actual maintenance: full existing daily backup, 5579-code verification, 5571 at target date, 5566 complete eight-session coverage.
 - [x] Two-stock minute/tick updates and real 10-30 auction readback; exception CSV and independent freshness/numeric checks.

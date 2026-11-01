@@ -228,10 +228,16 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         {
             "name": "full-tick",
             "rpc_command": "full_tick",
-            "description": "Call xtdata.get_full_tick.",
+            "description": "Latest full-tick snapshot via SDK or pinned native MiniQMT quote RPC.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbols": "one or more symbols"},
+            "inputs": {
+                "symbols": "one or more symbols",
+                "backend": "sdk (default) or native; snapshot only, no SDK fallback",
+                "path": "native: installed MiniQMT root or userdata_mini path",
+                "timeout": "native: connect/auth/query budget seconds, 0.1 to 60, default 5",
+                "quote_port": "native: existing loopback miniquote service port, default 58610",
+            },
         },
         {
             "name": "bars",
@@ -684,7 +690,8 @@ AGENT_SCHEMA: dict[str, Any] = {
         "path": "optional QMT root or userdata_mini path",
         "account": "required for account/trade commands",
         "account_type": "optional, default STOCK",
-        "backend": "asset/positions/orders/trades/account_snapshot: sdk (default) or native; no silent fallback",
+        "backend": "asset/positions/orders/trades/account_snapshot/full_tick: sdk (default) or native; no silent fallback",
+        "quote_port": "native full_tick: existing loopback quote service port, default 58610",
         "asset_backend": "account_snapshot asset section only: sdk (default) or native",
         "trades_backend": "account_snapshot trades section only: sdk (default) or native",
         "timeout": "native queries and snapshots: response budget seconds, 0.1 to 60, default 5",
@@ -751,6 +758,10 @@ AGENT_SCHEMA: dict[str, Any] = {
 }
 
 AGENT_EXAMPLES: dict[str, Any] = {
+    "native_full_tick": {
+        "command": "full_tick", "backend": "native", "symbols": ["600000.SH", "000001.SZ"],
+        "path": "D:\\QMT\\userdata_mini", "timeout": 5,
+    },
     "fully_native_snapshot": {
         "command": "account_snapshot", "account": "123456", "backend": "native",
         "path": "D:\\QMT\\userdata_mini", "timeout": 5,
@@ -1022,6 +1033,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Return latest full-tick data for one or more symbols.",
     )
     full_tick.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH 000001.SZ")
+    full_tick.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    full_tick.add_argument("--timeout", type=float, default=5)
+    full_tick.add_argument("--quote-port", type=int, default=58610)
 
     bars = subparsers.add_parser(
         "bars",
@@ -1395,6 +1409,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_command(args: argparse.Namespace) -> int:
+    if args.command == "full-tick" and args.backend == "native":
+        _print_json(_native_dispatch(vars(args), None))
+        return 0
     if args.command in {"asset", "positions", "orders", "trades"} and args.backend == "native":
         _print_json(_native_dispatch(vars(args), None))
         return 0
@@ -1900,6 +1917,14 @@ def _native_records(request: dict[str, Any], operation: str, session: AccountSes
 
 def _native_dispatch(request: dict[str, Any], session: AccountSession | None) -> Any:
     command = request.get("command")
+    if command in {"full_tick", "full-tick"}:
+        from qmtcli.native_quote import query_native_full_tick
+
+        path = request.get("path") or QMTGateway.resolve_path()
+        if not path:
+            raise ValueError("native full-tick requires --path or an installed MiniQMT")
+        return query_native_full_tick(path, request.get("symbols"), request.get("timeout", 5),
+                                     request.get("quote_port", 58610))
     if command == "asset":
         return _native_asset(request, session)
     if command == "trades":
@@ -1912,7 +1937,7 @@ def _native_dispatch(request: dict[str, Any], session: AccountSession | None) ->
             raise ValueError("cancelable_only must be a boolean")
         operation = "asset_cancelable_orders" if command == "orders" and cancelable else f"asset_{command}"
         return _native_records(request, operation, session)[command]
-    raise ValueError("native backend supports asset, positions, orders, trades and account_snapshot only")
+    raise ValueError("native backend supports asset, positions, orders, trades, account_snapshot and full_tick only")
 
 
 def _native_snapshot(request: dict[str, Any], session: AccountSession | None) -> dict:

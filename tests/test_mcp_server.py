@@ -116,6 +116,19 @@ def test_mcp_quote_output_normalizes_native_missing_price(monkeypatch):
     }
 
 
+def test_mcp_native_quote_backend_uses_public_dispatch(monkeypatch):
+    from qmtcli import native_quote
+
+    monkeypatch.setattr(native_quote, "query_native_full_tick",
+                        lambda *args: {"600000.SH": {"time": 123, "lastPrice": 9.5}})
+    result = anyio.run(call_tool, "qmt_full_tick", {
+        "symbols": ["600000.SH"], "backend": "native", "path": "QMT",
+    })
+    assert json.loads(result[0].text) == {
+        "ok": True, "data": {"600000.SH": {"time": 123, "lastPrice": 9.5}},
+    }
+
+
 def test_call_tool_command_argument_cannot_override_dispatch_target(monkeypatch):
     """A caller-supplied "command" argument must never win over the resolved dispatch target --
     otherwise any exposed tool (even the read-only qmt_status) could be hijacked into reaching an

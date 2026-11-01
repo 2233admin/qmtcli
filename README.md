@@ -18,6 +18,10 @@
 仅支持已核验的 Windows x64 客户端版本和普通股票账户。默认资产查询继续使用 SDK。
 用法、版本指纹和限制见 [原生资产查询](docs/native-asset.md)。
 
+行情快照现可使用 `full-tick 600000.SH 000001.SZ --backend native`，无需交易账户，
+不导入 xtquant；SDK 仍为默认。安装版本、缓存时间和接入限制见
+[原生行情快照](docs/native-quote.md)。
+
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
 - **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，不下单。

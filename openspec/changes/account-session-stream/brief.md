@@ -42,3 +42,20 @@ wrappers 0x11450 (476 bytes), 0x11490 (328 bytes); OrderService_mini query handl
 0x13A7B0/0x13E890 and record writers 0x11AAD0/0x11BD30. Reverify live output before
 claiming codec correctness. Existing wheel is the owned ringbuffer runtime adapter;
 new custom code is limited to protocol codecs and routing, no replacement transport.
+
+## Native full-tick integration slice
+
+Authorized: combine usable native access with official SDK comparison. Extend the
+existing full-tick CLI/RPC/JSONL/MCP command with explicit backend selection; keep
+SDK as default, preserve its symbol mapping and timestamps, require no account.
+Acceptance: actual Python 3.15.2 formal entry points with xtquant imports blocked,
+two-symbol field comparison to SDK 3.11 (float serialization tolerance 1e-12),
+bounded framing/CRC/decompression and negative controls, cleanup on failures.
+Reuse the installed pure-Python BSON codec via isolated relative package imports;
+no broker vendoring, new package, compiled Python extension or custom BSON codec.
+Pin the five verified runtime binaries. Connect only to the existing loopback
+service and authenticate the actual caller PID. No generic native RPC escape hatch.
+Snapshot connections are owned per request: the earlier unsupported long-running
+download frame must be identified before quote connection reuse is accepted.
+Historical payload decoding, push delivery and auction semantics remain separate
+unaccepted work; this slice must not claim full native market coverage.

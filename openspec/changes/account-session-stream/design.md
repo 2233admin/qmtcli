@@ -413,3 +413,47 @@ installed. This turn changed data and receipts/docs only, not QMTCLI production
 Python code, so its unchanged unit suite was not rerun as a substitute for data QA.
 Review items remain the 13 per-symbol gaps and batch/native maintenance lifecycle;
 no fabricated records or blanket completed-software claim.
+
+## Formal native full-tick integration — 2026-11-01
+
+`full-tick --backend native` now uses a dedicated read-only quote adapter, also
+reachable through full_tick RPC/JSONL and the generated qmt_full_tick MCP tool.
+SDK stays the default and no automatic fallback is performed. The public symbol
+mapping/timestamps are preserved; account/session state is not required or reused.
+Only authPid (actual process PID) and getFullTick are allowlisted. Existing local
+miniquote receives outbound loopback TCP connections; no listening server is added.
+
+The five research-verified binary fingerprints are pinned in native_quote.py.
+Installed xtbson.bson37 is reused under a private package namespace, with _cbson
+blocked, relative imports and no sys.path edits. This wheel avoids implementing
+another BSON codec or adding dependencies. Custom code owns framing >IIHH,
+named BSON array container adaptation, bounded zlib decoding, the verified CRC32
+variant, request sequences, shared connect/auth/query timeout and socket cleanup.
+An unknown frame, truncated reply, CRC mismatch, unsupported runtime or service
+error explicitly fails the request. Empty result mappings remain valid cache misses.
+
+The research download probe's unknown long-running frame is still unresolved.
+Consequently each snapshot owns its socket and closes it on success/failure;
+JSONL process reuse is supported, native quote connection reuse is not claimed.
+No historical B payload decoder, quote push implementation or auction semantics
+was smuggled into snapshot acceptance. Big QMT remains untested.
+
+| Conclusion | Check / receipt | Result and limits |
+|---|---|---|
+| Formal native snapshot works on Python 3.15.2 | Private verify-formal-native-quote.py; recovery/five-areas/formal-native-quote-acceptance.json | Actual CLI, RPC and JSONL; xtquant imports forbidden and BSON _USE_C false checked in each native process. |
+| Snapshot matches official SDK | Python 3.11 installed SDK get_full_tick versus formal native CLI/RPC/JSONL | Two stocks, 18 fields each, all four depth arrays length five. Three floats differ by 1.7763568394002505e-15; explicit tolerance 1e-12, other fields/integers exact. Cached timestamps preserved, not a live market test. |
+| JSONL errors do not stop subsequent reads | Ten valid snapshot requests with invalid timeout inserted after five, then EOF | Ten successes, invalid id echoed as failure, later requests succeed, clean process exit; snapshot sockets are not retained. |
+| Protocol/public failure behavior has offline coverage | tests/test_native_quote.py and tests/test_mcp_server.py; uv run --no-sync --extra dev pytest -q | Fragments/coalescing, CRC, sizes, decompression bomb, unknown kind, sequence mismatch, invalid inputs/results, auth rejection, empty cache, deadlines, runtime fingerprint and pure codec isolation. Final frozen tree: 427 passed in 5.98s, exit 0. |
+| Static/structural gates pass | ruff check .; ruff check src/qmtcli/native_quote.py --select C901; git diff --check; code-intel . --mode normal | All exit 0. Code Intel Outcome completed; run evidence C:/Users/Administrator/AppData/Local/code-intel/artifacts/qmtcli-account-session-stream/1793517799350-91644-core/run-complete.json. Only this documentation receipt changed after the frozen scan. |
+
+Warm filesystem/process observations in the acceptance receipt: separate CLI
+process 222.491 ms, JSONL process serving 10 snapshots plus one validation error
+319.632 ms. An earlier cold CLI launch took 8645.765 ms under concurrent host load.
+These are samples including process startup/profile checks, not an SDK speedup
+benchmark or native connection reuse measurement. No average/p95 claim is made.
+
+Closeout: use this existing OpenSpec as the local in_review state, no new external
+tracker entry or duplicate KB state. The reusable interface is documented in
+docs/native-quote.md; research acceptance script/receipt remain private outside
+the repository. No vendor code, credentials, trade writes or package installs.
+Main checkout's pre-existing dirty files are preserved. No remote push/merge.
