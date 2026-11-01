@@ -570,3 +570,16 @@ messages are persisted, not raw authorization/account logs. Production source
 is unchanged; no unit-suite rerun substituted for the real failed connection.
 User's running full client is left open, no server checks were bypassed. Overall
 state remains in_review, Big account/query completion unchecked, no remote push.
+
+### Login-state reassessment after user weekend hypothesis
+
+Local date/time check confirms Sunday 2026-11-01. Sanitized current-session log
+classification (check-big-qmt-login-state.py, private login-state-check-20261101.json)
+finds repeated login-failure phrases through 19:28, alongside some success markers
+whose client/market/trading-account component attribution is not established.
+No explicit weekend/maintenance/out-of-service-time phrase was found in this
+bounded scan, so weekend maintenance remains a hypothesis, not a verified cause.
+The failed-login markers are new context; they do not prove that failed login
+caused the startup capability value zero, nor that the value is a permanent
+entitlement restriction. Preserve the directly observed gate/refusal results but
+recheck after a confirmed relevant counter login before final capability judgment.
