@@ -1,0 +1,9 @@
+{
+  "command": "buy",
+  "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini",
+  "account": "ACCOUNT_ID",
+  "account_type": "STOCK",
+  "symbol": "600519.SH",
+  "volume": 100,
+  "price": 1500.0
+}

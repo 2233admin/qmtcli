@@ -47,12 +47,14 @@ def test_capabilities_cli_is_agent_readable(capsys):
         "positions",
         "orders",
         "trades",
+        "buy",
+        "sell",
+        "cancel",
         "trade_call",
     } <= names
-    assert not {"buy", "sell", "cancel"} & names
-    dangers = {command["danger"] for command in response["data"]["commands"]}
-    assert {"safe", "escape_hatch", "downloads_data"} <= dangers
-    assert not {"places_order", "cancels_order"} & dangers
+    assert {"safe", "escape_hatch", "downloads_data", "places_order"} <= {
+        command["danger"] for command in response["data"]["commands"]
+    }
 
 
 def _registered_subcommand_names() -> set[str]:
@@ -89,7 +91,7 @@ def test_examples_cli_returns_parseable_requests(capsys):
     response = _json_out(capsys)
     assert response["ok"] is True
     assert response["data"]["status"]["command"] == "status"
-    assert "buy" not in response["data"]
+    assert response["data"]["buy"]["command"] == "buy"
 
 
 def test_agent_metadata_available_over_rpc(monkeypatch, capsys):
