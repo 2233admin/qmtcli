@@ -20,14 +20,22 @@ CProxyClient::onConnected  ... bson_error = "End of file", isNetError: true     
 
 ## Which port does what
 
-Two addresses are configured and they do different jobs:
+`config/clientEnv.lua` carries two addresses:
 
-| Key | File | Port | Job |
+| Key | Line | Port | Configured role |
 |---|---|---|---|
-| `m_strSeviceAddress = g_xtservice_address` | `config/clientEnv.lua:36` | 56000 | Trading session login. This is the one that must be reachable to trade. |
-| `m_strProxyAddress = g_defaultPorts["proxy"]` | `config/clientEnv.lua:47` | 59000 | Proxy and market-data channel. |
+| `m_strSeviceAddress = g_xtservice_address` | `:36` | 56000 | trading service, from `xtaddress.server` |
+| `m_strProxyAddress = g_defaultPorts["proxy"]` | `:47` | 59000 | proxy, from `xtaddress.proxy` |
 
-A reachable 59000 with a dead 56000 means the host and network are fine and only the trading service is down. Reaching for 59000 as a workaround does not produce a login.
+The client's own runtime record disagrees about which port carries trading. `XtClient_YYYYMMDD.log` writes this on shutdown:
+
+```
+[TC::CQuotersConfig::flush] ... servers = [1 : server num 0, current , trade current 1_1_101.230.66.158_59000]
+                              [2 : server num 13, current 0_2_43.242.96.162_55300,
+                                   trade current 1_2_140.206.172.170_59000]
+```
+
+`trade current` names 59000, and it names a host `43.242.96.162:55300` that appears in no `customer.lua` list. The `m_status` values in the same log show the login attempts going to 56000. Treat the mapping as unresolved: read `trade current` from a live logged-in client instead of deriving it from the config.
 
 ## Which customer.lua wins
 
@@ -49,14 +57,29 @@ A reachable 59000 with a dead 56000 means the host and network are fine and only
 
 The `10061` arm doubles as the stopped-bridge criterion: stop the strategy in QMT, rerun, and the probe must return to `10061`.
 
-## Separating broker-side from local
+## TCP probes prove nothing behind the TUN proxy
 
-A TCP probe distinguishes the two without touching the client:
+While a TUN proxy (verge-mihomo) is active, every non-loopback TCP connect succeeds in 0–2 ms, including addresses that cannot exist. Measured 2026-11-08 15:16 +08:00:
 
-| Observation | Conclusion |
+| Target | connect | first read |
+|---|---|---|
+| `192.0.2.1:56000` (RFC 5737, unroutable) | ok, 1 ms | — |
+| `203.0.113.7:59000` (RFC 5737) | ok, 26 ms | — |
+| `127.0.0.1:1` | refused `10061` | — |
+| `github.com:22` | ok, 416 ms | `SSH-2.0-…` |
+| all three login hosts, 56000 | ok, ~0 ms | nothing for 4 s |
+| all three login hosts, 59000 | ok, 28–52 ms | immediate zero-byte EOF |
+
+The `192.0.2.1` row settles it: an address that cannot be routed still connects. Loopback still refuses, so the hijack covers every non-loopback destination and nothing else.
+
+Read the set, not one row. `github.com:22` returning a banner shows the proxy forwards application data, so a target returning zero bytes on every port means only that **this host cannot reach the target** — never that the server is down.
+
+Signals the proxy cannot fake:
+
+| Signal | Meaning |
 |---|---|
-| 56000 times out on every login host, 59000 connects | broker-side service problem; no local fix |
-| 56000 refuses (RST) on every host | service process down on the broker host |
-| 56000 and 59000 both time out | local network or egress problem |
+| `XtClient_*.log` holds `m_status = 12` for the current login attempt | the client genuinely logged in |
+| `sdk-capabilities` exits 0 with `"ok":true` | the bridge is answering on loopback |
+| `sdk-capabilities` exits 1 with `os error 10061` | nothing is listening on loopback: bridge not started, or already stopped |
 
-The three login hosts come from `config/customer.lua` → `xtaddress.server`.
+The three login hosts come from `config/customer.lua` → `xtaddress.server`, but a probe of them carries no verdict while the proxy is up.
