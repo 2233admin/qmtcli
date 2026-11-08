@@ -35,6 +35,8 @@ Use `uv run ...` unless the package is installed into the active global Python.
   dispatched through `_handle_rpc_request`. Requires the optional `mcp` extra.
 - `tests/` - fake `xtquant` modules; tests must not require real QMT.
 - `examples/` - JSON and JSONL inputs for local automation.
+- `docs/repo-map.md` - which of the three copies you are editing (GitHub, this checkout, LayerFS `qmtcli-20261024`) and how to check whether `origin/main` has moved.
+- `docs/qmt-client-diagnosis.md` - where the QMT client log lives, which port carries login versus market data, and the probe that tells a stopped bridge from a missing secret.
 
 ## Safety Boundaries
 
@@ -45,6 +47,7 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - Keep `data-call` and `trade-call` blocking `_`-prefixed methods.
 - Keep order validation: positive price and positive A-share volume multiple of 100.
 - Keep `server` as stdin/stdout JSONL, not TCP/HTTP.
+- `buy` / `sell` / `cancel` stay available, backed by `QMTGateway.submit_order` and `cancel_order`; per-order human confirmation belongs to the calling gateway (KATANA). History: `ad500c6` removed them after a 2026-10-19 unconfirmed 000963 sell order, and `73a6769` restored them on 2026-11-08 by operator decision.
 
 ## Common Agent Tasks
 
