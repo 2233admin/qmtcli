@@ -7,6 +7,13 @@ begin.
 
 ## Unreleased
 
+- Gave `QMTGateway` an explicit connection state. `connection_state()` returns `not_connected`,
+  `connected_without_account` or `connected`; the two `RuntimeError` messages for a missing trader
+  and a missing account now name the missing precondition instead of sharing one "is not connected"
+  line; and `status` gained a `state` field (`sdk_ready` / `sdk_missing`) beside the unchanged
+  `xtquant` boolean. `connect(subscribe=False)` deliberately leaves `account` unset, so the old
+  message sent callers to reconnect rather than to subscribe. `a5f1dae`.
+
 - Restored `buy`, `sell` and `cancel` on the CLI, `rpc` and `server` transports, and lifted the
   `trade-call` restriction back to blocking only `_`-prefixed methods. `ad500c6` had removed them
   after a 2026-10-19 unconfirmed 000963 sell order; an operator decision on 2026-11-08 restored them,
