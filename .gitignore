@@ -7,6 +7,9 @@ dist/
 build/
 *.egg-info/
 
+# uv-managed local Python runtime (installer cache and embedded distribution).
+/Python/
+
 # Local LayerFS binding and setup receipt.
 /.omp/layerfs.json
 /.omp/layerfs-setup.json
