@@ -54,3 +54,13 @@ are not product. `tools/` and `docs/sdk/` are the official 250807 SDK semantic m
 
 `README_OLD.md`, `README_BEFORE_POLISH.md`, and `.github-optimization.md` are superseded drafts, not
 product. They are ignored by git in this checkout.
+
+## Interpreters
+
+`py -V:3.15` (Python 3.15.2) lives at `%LOCALAPPDATA%\Python\pythoncore-3.15-64`, with its shims in
+`%LOCALAPPDATA%\Python\bin`. On 2026-11-09 a Python install manager put a 3.15 store inside this
+checkout as `Python/`, which made `ruff check .` report 2768 errors from the CPython stdlib. It was
+moved to the address above on 2026-11-10; `HKCU\Software\Python\PythonCore\3.15` now points there,
+and the pre-move values are backed up at
+`%LOCALAPPDATA%\Python\pythoncore-3.15-regbackup.reg`. No interpreter belongs inside the repo, so a
+`Python/` directory reappearing here is an accident, not product.

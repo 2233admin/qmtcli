@@ -15,6 +15,3 @@ build/
 /README_OLD.md
 /README_BEFORE_POLISH.md
 /.github-optimization.md
-
-# Unpacked CPython tree left in the repo root; not product source, and it breaks `ruff check .`.
-/Python/
