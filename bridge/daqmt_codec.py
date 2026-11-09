@@ -97,8 +97,21 @@ def _container(value, state, depth, module, kind):
                 'shape': list(value.shape), 'data': item(value.tolist())}
     fields = {}
     for name in dir(value):
-        if name.startswith('m_') and not callable(getattr(value, name)):
-            fields[name] = item(getattr(value, name))
+        if not name.startswith('m_'):
+            continue
+        try:
+            attribute = getattr(value, name)
+        except Exception as error:
+            # A native getter can raise on one field; keep the rest and mark this
+            # one so the caller fails closed instead of losing the whole result.
+            fields[name] = {'$type': 'unreadable', 'class': type(error).__name__}
+            continue
+        if callable(attribute):
+            continue
+        try:
+            fields[name] = item(attribute)
+        except TypeError:
+            fields[name] = {'$type': 'unsupported', 'class': type(attribute).__name__}
     if fields:
         return {'$type': 'sdk-object', 'class': kind, 'fields': fields}
     raise TypeError('unsupported SDK result type: ' + kind)
