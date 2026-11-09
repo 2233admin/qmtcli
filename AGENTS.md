@@ -35,6 +35,12 @@ Use `uv run ...` unless the package is installed into the active global Python.
   dispatched through `_handle_rpc_request`. Requires the optional `mcp` extra.
 - `tests/` - fake `xtquant` modules; tests must not require real QMT.
 - `examples/` - JSON and JSONL inputs for local automation.
+- `docs/repo-map.md` - which copy of this project you are editing (GitHub, this checkout, the
+  `D:/projects/qmtcli` copy, LayerFS `qmtcli-20261024`) and which order policy each copy carries.
+- `docs/qmt-client-diagnosis.md` - where the QMT client log lives, which port carries login versus
+  market data, and the probe that tells a stopped bridge from a missing secret.
+- `scripts/check_mcp_tree.py` - fails when the MCP server serves a different checkout than this
+  one, or one with a different command surface.
 
 ## Safety Boundaries
 
@@ -42,11 +48,16 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - Do not store credentials or account secrets.
 - Do not auto-download, vendor, or install broker QMT.
 - Do not place real orders in tests.
-- qmtcli is read-only: do not add order placement, cancellation, or fund transfer (no `buy`/`sell`/
-  `cancel`). Orders go through a gateway with per-order human confirmation outside this tool.
-- Keep `data-call` blocking `_`-prefixed methods and `trade-call` limited to `query_*` /
-  `smt_query_*` (`READ_ONLY_TRADER_PREFIXES` in `gateway.py`).
+- Keep `data-call` and `trade-call` blocking `_`-prefixed methods.
+- Keep order validation: positive price and positive A-share volume multiple of 100.
 - Keep `server` as stdin/stdout JSONL, not TCP/HTTP.
+- `buy` / `sell` / `cancel` stay available, backed by `QMTGateway.submit_order` and `cancel_order`;
+  per-order human confirmation belongs to the calling gateway (KATANA). The MCP tool surface stays
+  read-only: `mcp_server.py` excludes every capability whose danger is `places_order` or
+  `cancels_order`, so order placement reaches an agent only through CLI, rpc or server, never
+  through an MCP tool.
+  History: `ad500c6` removed them after a 2026-10-19 unconfirmed 000963 sell order, and `73a6769`
+  restored them on 2026-11-08 by operator decision.
 
 ## Common Agent Tasks
 

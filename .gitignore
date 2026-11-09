@@ -6,3 +6,12 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Local LayerFS binding and setup receipt.
+/.omp/layerfs.json
+/.omp/layerfs-setup.json
+
+# Superseded local drafts, not product. See docs/repo-map.md.
+/README_OLD.md
+/README_BEFORE_POLISH.md
+/.github-optimization.md
