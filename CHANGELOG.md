@@ -7,10 +7,15 @@ begin.
 
 ## Unreleased
 
-- **Breaking:** qmtcli is now read-only. Removed `buy`, `sell`, and `cancel` from the CLI, `rpc`,
-  `server`, and `capabilities`, and `trade-call` now only accepts `query_*` / `smt_query_*`
-  methods. An agent could place an order through these without per-order approval; orders now go
-  through a gateway with per-order human confirmation outside this tool.
+- Restored `buy`, `sell` and `cancel` on the CLI, `rpc` and `server` transports, and lifted the
+  `trade-call` restriction back to blocking only `_`-prefixed methods. `ad500c6` had removed them
+  after a 2026-10-19 unconfirmed 000963 sell order; an operator decision on 2026-11-08 restored them,
+  with per-order human confirmation kept in the calling gateway (KATANA) rather than in qmtcli.
+  The MCP tool surface is unchanged by this: `mcp_server.py` still excludes every `places_order` /
+  `cancels_order` capability, so an MCP client cannot place an order.
+- Added `scripts/check_mcp_tree.py`, a local guard that fails when the qmt MCP server serves a
+  checkout other than this one or a different command surface, plus `docs/repo-map.md` naming the
+  four copies of the project on this machine and the order policy each carries.
 - Removed a host-dependent offline test that could discover a real QMT SDK and
   initialize its trader; deterministic fake-SDK and error-envelope coverage remains.
 - Updated locked urllib3 to 2.8.0 and certifi to 2026.10.19 for transport security
