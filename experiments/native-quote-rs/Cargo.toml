@@ -1,0 +1,12 @@
+[package]
+name = "qmt-native-quote-experiment"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+qmt-quote.workspace = true
+bson.workspace = true
+crc32fast.workspace = true
+flate2.workspace = true
+serde_json.workspace = true

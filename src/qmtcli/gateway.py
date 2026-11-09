@@ -11,6 +11,7 @@ import importlib.metadata
 import importlib.util
 import random
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,21 @@ class QMTConnection:
     session_id: int | None = None
 
 
+def _account_callback(base: type, emit: Any) -> Any:
+    """Adapt the installed SDK's callback base without importing it at module load."""
+    events = {
+        "on_stock_asset": "asset", "on_stock_position": "position",
+        "on_stock_order": "order", "on_stock_trade": "trade",
+        "on_account_status": "status", "on_disconnected": "disconnected",
+        "on_order_error": "order_error", "on_cancel_error": "cancel_error",
+    }
+
+    def handler(kind: str) -> Any:
+        return lambda self, data=None: emit(kind, data)
+
+    return type("AccountCallback", (base,), {name: handler(kind) for name, kind in events.items()})()
+
+
 class QMTGateway:
     """Small wrapper around xtquant account queries and orders."""
 
@@ -62,6 +78,7 @@ class QMTGateway:
         self.trader: Any | None = None
         self.account: Any | None = None
         self.xtconstant: Any | None = None
+        self.on_event: Any | None = None
 
     @classmethod
     def init_xtdc(cls, token: str, port: int = 58620) -> None:
@@ -267,20 +284,37 @@ class QMTGateway:
         # Positional on purpose: the docs call this parameter session_id but the
         # shipped SDK names it session; positional works across both.
         trader = xttrader.XtQuantTrader(self.connection.path, session_id)
-        trader.start()
-        result = trader.connect()
-        if result not in (0, None):
-            raise RuntimeError(f"QMT connect failed: {result}")
         self.trader = trader
+        try:
+            if self.on_event is not None:
+                trader.register_callback(_account_callback(xttrader.XtQuantTraderCallback, self.on_event))
+            trader.start()
+            result = trader.connect()
+            if result not in (0, None):
+                raise RuntimeError(f"QMT connect failed: {result}")
+            if subscribe and self.connection.account_id:
+                account = xttype.StockAccount(self.connection.account_id, self.connection.account_type)
+                subscribed = trader.subscribe(account)
+                if subscribed not in (0, None):
+                    raise RuntimeError(f"QMT account subscribe failed: {subscribed}")
+                self.account = account
+            else:
+                self.account = None
+        except Exception:
+            try:
+                self.close()
+            except Exception:
+                pass  # Preserve the original connect/start/subscribe error.
+            raise
 
-        if subscribe and self.connection.account_id:
-            account = xttype.StockAccount(self.connection.account_id, self.connection.account_type)
-            subscribed = trader.subscribe(account)
-            if subscribed not in (0, None):
-                raise RuntimeError(f"QMT account subscribe failed: {subscribed}")
-            self.account = account
-        else:
-            self.account = None
+    def close(self) -> None:
+        """Release an owned SDK session from its request thread, never a callback."""
+        trader, self.trader = self.trader, None
+        self.account = None
+        if trader is not None:
+            stop = getattr(trader, "stop", None)
+            if stop is not None:
+                stop()
 
     def connection_state(self) -> str:
         """One of ``not_connected``, ``connected_without_account``, ``connected``.
@@ -307,21 +341,33 @@ class QMTGateway:
             raise RuntimeError("QMTGateway is not connected; call connect() first")
         return self.trader
 
-    def query_asset(self) -> Any:
+    def _query_result(self, method: str, timeout: float | None, **kwargs: Any) -> Any:
         trader, account = self._require_connected()
-        return trader.query_stock_asset(account)
+        if timeout is None:
+            return getattr(trader, method)(account, **kwargs)
+        ready = threading.Event()
+        result: list[Any] = []
 
-    def query_positions(self) -> Any:
-        trader, account = self._require_connected()
-        return trader.query_stock_positions(account)
+        def receive(data: Any) -> None:
+            result.append(data)
+            ready.set()
 
-    def query_orders(self, cancelable_only: bool = False) -> Any:
-        trader, account = self._require_connected()
-        return trader.query_stock_orders(account, cancelable_only=cancelable_only)
+        getattr(trader, method + "_async")(account, callback=receive, **kwargs)
+        if not ready.wait(timeout):
+            raise TimeoutError(f"QMT {method} response deadline exceeded")
+        return result[0]
 
-    def query_trades(self) -> Any:
-        trader, account = self._require_connected()
-        return trader.query_stock_trades(account)
+    def query_asset(self, timeout: float | None = None) -> Any:
+        return self._query_result("query_stock_asset", timeout)
+
+    def query_positions(self, timeout: float | None = None) -> Any:
+        return self._query_result("query_stock_positions", timeout)
+
+    def query_orders(self, cancelable_only: bool = False, timeout: float | None = None) -> Any:
+        return self._query_result("query_stock_orders", timeout, cancelable_only=cancelable_only)
+
+    def query_trades(self, timeout: float | None = None) -> Any:
+        return self._query_result("query_stock_trades", timeout)
 
     @staticmethod
     def call_data(method: str, *args: Any, **kwargs: Any) -> Any:

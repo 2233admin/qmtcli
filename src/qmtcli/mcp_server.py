@@ -128,7 +128,9 @@ async def list_tools() -> list[types.Tool]:
     ]
 
 
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def call_tool(
+    name: str, arguments: dict[str, Any], xtdc: tuple[str, int] | None = None,
+) -> list[types.TextContent]:
     """Dispatch one MCP tool call through _handle_rpc_request, the shared rpc/server dispatch.
 
     A plain module-level function (not a closure inside build_server()) so tests can call it
@@ -147,7 +149,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         # authoritative no matter what the caller sends.
         request: dict[str, Any] = dict(arguments)
         request["command"] = command
-        response = _handle_rpc_request(request)
+        response = _handle_rpc_request(request, xtdc=xtdc)
     text = json.dumps(_scrub(response), ensure_ascii=False, default=_json_default)
     return [types.TextContent(type="text", text=text)]
 
@@ -162,28 +164,31 @@ def _qmtcli_version() -> str:
         return "0.0.0"
 
 
-def build_server() -> Server:
+def build_server(xtdc: tuple[str, int] | None = None) -> Server:
     """Build the low-level mcp.server.Server, wired to AGENT_CAPABILITIES/_handle_rpc_request."""
     server = Server(name="qmtcli", version=_qmtcli_version())
     server.list_tools()(list_tools)
-    server.call_tool()(call_tool)
+    async def dispatch(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+        return await call_tool(name, arguments, xtdc)
+
+    server.call_tool()(dispatch)
     return server
 
 
-async def _serve() -> None:
-    server = build_server()
+async def _serve(xtdc: tuple[str, int] | None = None) -> None:
+    server = build_server(xtdc)
     # MCP stdio owns stdout for the JSONRPC wire protocol; nothing in this module (or in
     # _handle_rpc_request/_json_default, both reused as-is from qmtcli.cli) prints to stdout.
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-def run_mcp_server() -> int:
+def run_mcp_server(xtdc: tuple[str, int] | None = None) -> int:
     """Entry point for `qmtcli mcp`: serve stdio MCP until the client closes stdin (Ctrl+C exits
     cleanly with code 0, matching the existing `watch` command's KeyboardInterrupt handling).
     """
     try:
-        anyio.run(_serve)
+        anyio.run(_serve, xtdc)
     except KeyboardInterrupt:
         pass
     return 0

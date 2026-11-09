@@ -14,6 +14,11 @@ begin.
   `xtquant` boolean. `connect(subscribe=False)` deliberately leaves `account` unset, so the old
   message sent callers to reconnect rather than to subscribe. `a5f1dae`.
 
+- Add opt-in `asset --backend native` through CLI/RPC/JSONL/MCP: a read-only,
+  version-pinned MiniQMT IPC asset query verified on Python 3.14 without xtquant.
+  SDK behavior remains the default; other commands do not gain a native backend.
+- Defer data-token initialization in RPC/JSONL/MCP until a non-native request,
+  preserving native-only sessions without SDK dependencies.
 - Restored `buy`, `sell` and `cancel` on the CLI, `rpc` and `server` transports, and lifted the
   `trade-call` restriction back to blocking only `_`-prefixed methods. `ad500c6` had removed them
   after a 2026-10-19 unconfirmed 000963 sell order; an operator decision on 2026-11-08 restored them,

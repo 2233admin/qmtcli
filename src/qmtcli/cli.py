@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import threading
+import time
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from importlib import resources
 from typing import Any
 
 from qmtcli.gateway import QMTConnection, QMTGateway
+from qmtcli.account_session import AccountSession
 
 try:
     import numpy as _np
@@ -220,10 +224,16 @@ AGENT_CAPABILITIES: dict[str, Any] = {
         {
             "name": "full-tick",
             "rpc_command": "full_tick",
-            "description": "Call xtdata.get_full_tick.",
+            "description": "Latest full-tick snapshot via SDK or pinned native MiniQMT quote RPC.",
             "requires_account": False,
             "danger": "safe",
-            "inputs": {"symbols": "one or more symbols"},
+            "inputs": {
+                "symbols": "one or more symbols",
+                "backend": "sdk (default) or native; snapshot only, no SDK fallback",
+                "path": "native: installed MiniQMT root or userdata_mini path",
+                "timeout": "native: connect/auth/query budget seconds, 0.1 to 60, default 5",
+                "quote_port": "native: existing loopback miniquote service port, default 58610",
+            },
         },
         {
             "name": "bars",
@@ -427,29 +437,66 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             },
         },
         {
-            "name": "asset",
-            "description": "Query account asset.",
+            "name": "account-snapshot",
+            "rpc_command": "account_snapshot",
+            "description": "Read current assets, positions, orders and trades via SDK or pinned native IPC.",
             "requires_account": True,
             "danger": "safe",
+            "inputs": {
+                "backend": "sdk (default, with optional section backends) or native for all four sections without SDK",
+                "asset_backend": "when backend=sdk: sdk (default) or pinned native asset",
+                "trades_backend": "when backend=sdk: sdk (default) or pinned native trades",
+                "timeout": "snapshot response budget seconds, 0.1 to 60, default 5; excludes SDK setup",
+            },
+            "note": "Sequential, non-atomic reads; includes timestamps and account-event sequence bounds.",
+        },
+        {
+            "name": "account_subscribe",
+            "description": "Enable incremental SDK account events on the active server session.",
+            "requires_account": True, "danger": "safe", "transports": ["server"],
+            "note": "Subscribe then account_snapshot; generation changes require resynchronization.",
+        },
+        {
+            "name": "account_unsubscribe",
+            "description": "Disable account event forwarding while retaining the query session.",
+            "requires_account": False, "danger": "safe", "transports": ["server"],
+        },
+        {
+            "name": "asset",
+            "description": "Query account asset via SDK or version-pinned native MiniQMT IPC.",
+            "requires_account": True,
+            "danger": "safe",
+            "inputs": {
+                "backend": "optional sdk (default) or native; native supports STOCK on Windows x64",
+                "timeout": "optional native response timeout in seconds, 0.1 to 60, default 5",
+            },
         },
         {
             "name": "positions",
             "description": "Query account positions.",
             "requires_account": True,
             "danger": "safe",
+            "inputs": {"backend": "sdk (default) or pinned native STOCK MiniQMT on Windows x64",
+                       "timeout": "native reply deadline seconds, default 5"},
         },
         {
             "name": "orders",
             "description": "Query account orders.",
             "requires_account": True,
             "danger": "safe",
-            "inputs": {"cancelable_only": "optional, default false; only return cancelable orders"},
+            "inputs": {"cancelable_only": "optional boolean, default false; server filters cancelable orders",
+                       "backend": "sdk (default) or pinned native STOCK MiniQMT on Windows x64",
+                       "timeout": "native reply deadline seconds, default 5"},
         },
         {
             "name": "trades",
-            "description": "Query account trades.",
+            "description": "Query account trades via SDK or pinned MiniQMT native IPC.",
             "requires_account": True,
             "danger": "safe",
+            "inputs": {
+                "backend": "sdk (default) or native; native supports pinned STOCK MiniQMT on Windows x64",
+                "timeout": "native reply deadline seconds, default 5",
+            },
         },
         {
             "name": "position-statistics",
@@ -657,6 +704,11 @@ AGENT_SCHEMA: dict[str, Any] = {
         "path": "optional QMT root or userdata_mini path",
         "account": "required for account/trade commands",
         "account_type": "optional, default STOCK",
+        "backend": "asset/positions/orders/trades/account_snapshot/full_tick: sdk (default) or native; no silent fallback",
+        "quote_port": "native full_tick: existing loopback quote service port, default 58610",
+        "asset_backend": "account_snapshot asset section only: sdk (default) or native",
+        "trades_backend": "account_snapshot trades section only: sdk (default) or native",
+        "timeout": "native queries and snapshots: response budget seconds, 0.1 to 60, default 5",
         "data_commands": (
             "Named data commands (calendar, bars, sector-stocks, ...) accept their CLI "
             "parameter names as JSON fields, with either dashes or underscores in the command "
@@ -674,6 +726,14 @@ AGENT_SCHEMA: dict[str, Any] = {
         "network": False,
         "line_contract": "one JSON request per input line, one JSON response per output line",
         "events": "subscription pushes appear as lines with an event field; responses have ok field",
+        "account_session": "One active SDK account; same path/account/type reuses it, switch closes it.",
+        "account_events": {
+            "event": "account_update", "type": "asset/position/order/trade/status/order_error/cancel_error/disconnected/resync_required",
+            "generation": "connection generation; discard old-generation events",
+            "sequence": "monotonic within generation; callback order, not broker event-time order",
+            "data": "original SDK payload; no materialized portfolio or automatic deduplication",
+            "recovery": "disconnect invalidates; next request reconnects and retained subscription emits resync_required",
+        },
     },
     "mcp": {
         "transport": "stdio MCP (Model Context Protocol); requires the optional mcp extra",
@@ -714,7 +774,26 @@ AGENT_SCHEMA: dict[str, Any] = {
 }
 
 AGENT_EXAMPLES: dict[str, Any] = {
+    "native_full_tick": {
+        "command": "full_tick", "backend": "native", "symbols": ["600000.SH", "000001.SZ"],
+        "path": "D:\\QMT\\userdata_mini", "timeout": 5,
+    },
+    "fully_native_snapshot": {
+        "command": "account_snapshot", "account": "123456", "backend": "native",
+        "path": "D:\\QMT\\userdata_mini", "timeout": 5,
+    },
+    "account_snapshot": {"command": "account_snapshot", "account": "123456"},
+    "native_trade_snapshot": {
+        "command": "account_snapshot", "account": "123456", "trades_backend": "native",
+    },
+    "native_trades": {"command": "trades", "account": "123456", "backend": "native"},
+    "account_subscribe": {"command": "account_subscribe", "account": "123456"},
+    "account_unsubscribe": {"command": "account_unsubscribe"},
     "status": {"command": "status"},
+    "native_asset": {
+        "command": "asset", "backend": "native", "account": "123456",
+        "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini", "timeout": 5,
+    },
     "doctor": {"command": "doctor", "path": "D:\\DFZQxtqmt_client_real_win64\\userdata_mini"},
     "data_call": {
         "command": "data_call",
@@ -821,15 +900,32 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--apply", action="store_true", help="perform the copy steps")
     bootstrap.add_argument("--base-url", default="", help="probe a running bridge, e.g. http://127.0.0.1:19001")
     bootstrap.add_argument("--secret", default="", help="X-Bridge-Secret for the probe; never stored")
-    subparsers.add_parser("asset", help="query stock asset for --account")
-    subparsers.add_parser("positions", help="query positions for --account")
+    asset = subparsers.add_parser("asset", help="query stock asset for --account")
+    asset.add_argument("--backend", choices=("sdk", "native"), default="sdk",
+                       help="SDK (default) or experimental version-pinned native MiniQMT IPC")
+    asset.add_argument("--timeout", type=float, default=5,
+                       help="native response timeout in seconds (0.1 to 60, default 5)")
+    positions = subparsers.add_parser("positions", help="query positions for --account")
+    positions.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    positions.add_argument("--timeout", type=float, default=5)
     orders = subparsers.add_parser("orders", help="query orders for --account")
+    orders.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    orders.add_argument("--timeout", type=float, default=5)
     orders.add_argument(
         "--cancelable-only",
         action="store_true",
         help="only return cancelable orders",
     )
-    subparsers.add_parser("trades", help="query trades for --account")
+    trades = subparsers.add_parser("trades", help="query trades for --account")
+    trades.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    trades.add_argument("--timeout", type=float, default=5)
+    snapshot = subparsers.add_parser(
+        "account-snapshot", help="read assets, positions, orders and trades in one session"
+    )
+    snapshot.add_argument("--asset-backend", choices=("sdk", "native"), default="sdk")
+    snapshot.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    snapshot.add_argument("--trades-backend", choices=("sdk", "native"), default="sdk")
+    snapshot.add_argument("--timeout", type=float, default=5, help="snapshot response budget seconds")
     subparsers.add_parser(
         "position-statistics",
         help="call XtQuantTrader.query_position_statistics for --account",
@@ -980,6 +1076,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Return latest full-tick data for one or more symbols.",
     )
     full_tick.add_argument("symbols", nargs="+", help="Symbols such as 600519.SH 000001.SZ")
+    full_tick.add_argument("--backend", choices=("sdk", "native"), default="sdk")
+    full_tick.add_argument("--timeout", type=float, default=5)
+    full_tick.add_argument("--quote-port", type=int, default=58610)
 
     bars = subparsers.add_parser(
         "bars",
@@ -1365,19 +1464,32 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_command(args: argparse.Namespace) -> int:
-    if getattr(args, "xtdc_token", ""):
-        QMTGateway.init_xtdc(args.xtdc_token, args.xtdc_port)
+    if args.command == "full-tick" and args.backend == "native":
+        _print_json(_native_dispatch(vars(args), None))
+        return 0
+    if args.command in {"asset", "positions", "orders", "trades"} and args.backend == "native":
+        _print_json(_native_dispatch(vars(args), None))
+        return 0
+    # Stdio sessions can serve native assets with no SDK at all. Carry token
+    # configuration to dispatch instead of loading xtdatacenter on startup.
+    xtdc = (args.xtdc_token, args.xtdc_port) if getattr(args, "xtdc_token", "") else None
     if args.command == "rpc":
-        return _rpc()
+        return _rpc(xtdc)
     if args.command == "server":
-        return _server()
+        return _server(xtdc)
+    if args.command == "account-snapshot":
+        response = _handle_rpc_request({**vars(args), "command": "account_snapshot"}, xtdc=xtdc)
+        _print_json(response)
+        return 0 if response["ok"] else 1
     if args.command == "mcp":
         try:
             from qmtcli.mcp_server import run_mcp_server
         except ImportError:
             _print_json({"ok": False, "error": "mcp extra is not installed; pip install 'qmtcli[mcp]'"})
             return 1
-        return run_mcp_server()
+        return run_mcp_server(xtdc) if xtdc else run_mcp_server()
+    if xtdc:
+        QMTGateway.init_xtdc(*xtdc)
     if args.command == "capabilities":
         _print_json(_agent_response(AGENT_CAPABILITIES))
         return 0
@@ -1814,11 +1926,21 @@ def _dispatch_sector_command(params: dict[str, Any]) -> Any:
     return result
 
 
-def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) -> dict[str, Any]:
+def _handle_rpc_request(
+    request: dict[str, Any], allow_subscribe: bool = False,
+    xtdc: tuple[str, int] | None = None,
+    account_session: AccountSession | None = None,
+) -> dict[str, Any]:
     request_id = request.get("id")
     try:
-        data = _handle_rpc_data(request, allow_subscribe)
+        data = _handle_rpc_data(request, allow_subscribe, xtdc, account_session)
     except Exception as exc:  # noqa: BLE001 - JSON RPC boundary must report arbitrary failures.
+        command = request.get("command", "")
+        if account_session is not None and isinstance(command, str) and (
+            command in {"asset", "positions", "orders", "trades", "trade_call", "account_snapshot"}
+            or command.replace("_", "-") in TRADE_QUERY_COMMANDS
+        ):
+            account_session.invalidate()
         response = {"ok": False, "error": str(exc)}
     else:
         response = {"ok": True, "data": data}
@@ -1827,8 +1949,123 @@ def _handle_rpc_request(request: dict[str, Any], allow_subscribe: bool = False) 
     return response
 
 
-def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> Any:
+def _native_asset(request: dict[str, Any], account_session: AccountSession | None = None) -> Any:
+    if account_session is not None:
+        return account_session.native_query(_account_connection(request), "asset", request.get("timeout", 5))
+    from qmtcli.native_asset import query_native_asset
+
+    path = request.get("path") or QMTGateway.resolve_path()
+    if not path:
+        raise ValueError("native asset requires --path or an installed MiniQMT")
+    return query_native_asset(
+        path, request.get("account", ""), request.get("account_type", "STOCK"),
+        request.get("timeout", 5),
+    )
+
+
+def _native_account(
+    request: dict[str, Any], timeout: float | None = None,
+    account_session: AccountSession | None = None,
+) -> dict:
+    if account_session is not None:
+        return account_session.native_query(_account_connection(request), "asset_trades",
+                                            request.get("timeout", 5) if timeout is None else timeout)
+    from qmtcli.native_trades import query_native_account
+
+    path = request.get("path") or QMTGateway.resolve_path()
+    if not path:
+        raise ValueError("native trades require --path or an installed MiniQMT")
+    return query_native_account(
+        path, request.get("account", ""), request.get("account_type", "STOCK"),
+        request.get("timeout", 5) if timeout is None else timeout,
+    )
+
+
+def _native_records(request: dict[str, Any], operation: str, session: AccountSession | None) -> dict:
+    if session is not None:
+        return session.native_query(_account_connection(request), operation, request.get("timeout", 5))
+    from qmtcli.native_records import query_native_records
+    path = request.get("path") or QMTGateway.resolve_path()
+    if not path:
+        raise ValueError("native query requires --path or an installed MiniQMT")
+    return query_native_records(path, request.get("account", ""), request.get("account_type", "STOCK"),
+                                request.get("timeout", 5), operation)
+
+
+def _native_dispatch(request: dict[str, Any], session: AccountSession | None) -> Any:
     command = request.get("command")
+    if command in {"full_tick", "full-tick"}:
+        from qmtcli.native_quote import query_native_full_tick
+
+        path = request.get("path") or QMTGateway.resolve_path()
+        if not path:
+            raise ValueError("native full-tick requires --path or an installed MiniQMT")
+        return query_native_full_tick(path, request.get("symbols"), request.get("timeout", 5),
+                                     request.get("quote_port", 58610))
+    if command == "asset":
+        return _native_asset(request, session)
+    if command == "trades":
+        return _native_account(request, account_session=session)["trades"]
+    if command == "account_snapshot":
+        return _native_snapshot(request, session)
+    if command in {"positions", "orders"}:
+        cancelable = request.get("cancelable_only", False)
+        if not isinstance(cancelable, bool):
+            raise ValueError("cancelable_only must be a boolean")
+        operation = "asset_cancelable_orders" if command == "orders" and cancelable else f"asset_{command}"
+        return _native_records(request, operation, session)[command]
+    raise ValueError("native backend supports asset, positions, orders, trades, account_snapshot and full_tick only")
+
+
+def _native_snapshot(request: dict[str, Any], session: AccountSession | None) -> dict:
+    timeout = _snapshot_timeout(request)
+    owned = session is None
+    session = session or AccountSession(QMTGateway, _emit)
+    started = datetime.now(timezone.utc).isoformat()
+    clock = time.perf_counter()
+    cursor = session.cursor()
+    try:
+        result = _native_records({**request, "timeout": timeout}, "snapshot", session)
+        if any(result.get(k) is None for k in ("asset", "positions", "orders", "trades")):
+            raise RuntimeError("native snapshot returned an incomplete result")
+        result["meta"] = {
+            "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+            "duration_ms": round((time.perf_counter() - clock) * 1000, 3), "atomic": False,
+            "backend": "native", "asset_backend": "native", "positions_backend": "native",
+            "orders_backend": "native", "trades_backend": "native",
+            "generation": cursor["generation"], "native_generation": session.native_generation,
+            "sequence_start": cursor["sequence"], "sequence_end": session.cursor()["sequence"],
+        }
+        return result
+    finally:
+        if owned:
+            session.close()
+
+
+def _handle_rpc_data(
+    request: dict[str, Any], allow_subscribe: bool = False,
+    xtdc: tuple[str, int] | None = None,
+    account_session: AccountSession | None = None,
+) -> Any:
+    command = request.get("command")
+    backend = request.get("backend", "sdk")
+    if backend not in ("sdk", "native"):
+        raise ValueError("backend must be sdk or native")
+    if backend == "native":
+        return _native_dispatch(request, account_session)
+    if xtdc:
+        QMTGateway.init_xtdc(*xtdc)
+    if command == "account_snapshot":
+        return _account_snapshot(request, account_session)
+    if command in {"account_subscribe", "account_unsubscribe"}:
+        if not allow_subscribe or account_session is None:
+            raise ValueError("account subscriptions require server mode")
+        if command == "account_unsubscribe":
+            return account_session.unsubscribe()
+        connection = _account_connection(request)
+        if not connection.account_id:
+            raise ValueError("account_subscribe requires account")
+        return account_session.subscribe(connection)
     if command == "capabilities":
         return AGENT_CAPABILITIES
     if command == "schema":
@@ -1855,7 +2092,7 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
             raise ValueError("subscribe commands require server mode")
         return _dispatch_subscribe_command(command, request)
     if isinstance(command, str) and command.replace("_", "-") in TRADE_QUERY_COMMANDS:
-        return _dispatch_trade_query_command(command.replace("_", "-"), request)
+        return _dispatch_trade_query_command(command.replace("_", "-"), request, account_session)
 
     account_commands = {
         "asset",
@@ -1870,14 +2107,7 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
     if command not in account_commands:
         raise ValueError(f"unknown command: {command}")
 
-    gateway = QMTGateway(
-        QMTConnection(
-            request.get("path", ""),
-            request.get("account", ""),
-            request.get("account_type", "STOCK"),
-        )
-    )
-    gateway.connect()
+    gateway = _account_gateway(request, account_session)
     if command == "asset":
         return gateway.query_asset()
     if command == "positions":
@@ -1901,19 +2131,94 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
         )
 
 
-def _dispatch_trade_query_command(command: str, request: dict[str, Any]) -> Any:
+def _dispatch_trade_query_command(
+    command: str, request: dict[str, Any], account_session: AccountSession | None = None,
+) -> Any:
     """Shared CLI/RPC dispatch for the named read-only XtQuantTrader queries in TRADE_QUERY_COMMANDS."""
     spec = TRADE_QUERY_COMMANDS[command]
     account_optional = command in ACCOUNT_OPTIONAL_COMMANDS
-    gateway = QMTGateway(
-        QMTConnection(
-            request.get("path", ""),
-            request.get("account", ""),
-            request.get("account_type", "STOCK"),
-        )
-    )
-    gateway.connect(subscribe=not account_optional)
+    gateway = _account_gateway(request, account_session, subscribe=not account_optional)
     return gateway.call_trader(spec["method"], with_account=spec["with_account"])
+
+
+def _account_connection(request: dict[str, Any]) -> QMTConnection:
+    return QMTConnection(
+        request.get("path") or "", request.get("account") or "",
+        request.get("account_type", "STOCK"),
+    )
+
+
+def _account_gateway(
+    request: dict[str, Any], session: AccountSession | None, subscribe: bool = True,
+) -> QMTGateway:
+    connection = _account_connection(request)
+    if session is not None:
+        return session.get(connection, subscribe=subscribe)
+    gateway = QMTGateway(connection)
+    gateway.connect(subscribe=subscribe)
+    return gateway
+
+
+def _snapshot_timeout(request: dict[str, Any]) -> float:
+    if not request.get("account"):
+        raise ValueError("account_snapshot requires account")
+    timeout = request.get("timeout", 5)
+    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or not 0.1 <= timeout <= 60):
+        raise ValueError("snapshot timeout must be between 0.1 and 60 seconds")
+    return timeout
+
+
+def _account_snapshot(request: dict[str, Any], session: AccountSession | None) -> dict:
+    timeout = _snapshot_timeout(request)
+    backend = request.get("asset_backend", "sdk")
+    if backend not in {"sdk", "native"}:
+        raise ValueError("asset_backend must be sdk or native")
+    trades_backend = request.get("trades_backend", "sdk")
+    if trades_backend not in {"sdk", "native"}:
+        raise ValueError("trades_backend must be sdk or native")
+    owned = session is None
+    session = session or AccountSession(QMTGateway, _emit)
+    try:
+        gateway = session.get(_account_connection(request))
+        cursor = session.cursor()
+        started = datetime.now(timezone.utc).isoformat()
+        clock = time.perf_counter()
+
+        def remaining() -> float:
+            left = timeout - (time.perf_counter() - clock)
+            if left <= 0:
+                raise TimeoutError("account snapshot response deadline exceeded")
+            return left
+
+        native = _native_account(request, remaining(), session) if trades_backend == "native" else None
+        native_asset = native["asset"] if native is not None else None
+        result = {
+            "asset": (native_asset if native is not None else _native_asset({**request, "timeout": remaining()}, session))
+            if backend == "native" else gateway.query_asset(timeout=remaining()),
+            "positions": gateway.query_positions(timeout=remaining()),
+            "orders": gateway.query_orders(timeout=remaining()),
+            "trades": native["trades"] if native is not None else gateway.query_trades(timeout=remaining()),
+        }
+        missing = [name for name, value in result.items() if value is None]
+        if missing:
+            raise RuntimeError(f"account snapshot returned no result for: {', '.join(missing)}")
+        end = session.cursor()
+        if not end["connected"] or end["generation"] != cursor["generation"]:
+            raise RuntimeError("QMT disconnected during account snapshot")
+        result["meta"] = {
+            "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+            "duration_ms": round((time.perf_counter() - clock) * 1000, 3), "atomic": False,
+            "asset_backend": backend, "trades_backend": trades_backend,
+            "generation": cursor["generation"],
+            "sequence_start": cursor["sequence"], "sequence_end": end["sequence"],
+        }
+        if backend == "native" or native is not None:
+            result["meta"]["native_generation"] = session.native_generation
+        return result
+    finally:
+        if owned:
+            session.close()
 
 
 def _dispatch_subscribe_command(command: str, request: dict[str, Any]) -> Any:
@@ -2005,19 +2310,25 @@ def _handle_watch_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rpc() -> int:
+def _rpc(xtdc: tuple[str, int] | None = None) -> int:
     request = json.loads((sys.stdin.read() or "{}").lstrip("\ufeff"))
-    _print_json(_handle_rpc_request(request))
+    _print_json(_handle_rpc_request(request, xtdc=xtdc))
     return 0
 
 
-def _server() -> int:
-    for line in sys.stdin:
-        line = line.strip().lstrip("\ufeff")
-        if not line:
-            continue
-        response = _handle_rpc_request(json.loads(line), allow_subscribe=True)
-        _emit(response)
+def _server(xtdc: tuple[str, int] | None = None) -> int:
+    session = AccountSession(QMTGateway, _emit)
+    try:
+        for line in sys.stdin:
+            line = line.strip().lstrip("\ufeff")
+            if not line:
+                continue
+            response = _handle_rpc_request(
+                json.loads(line), allow_subscribe=True, xtdc=xtdc, account_session=session,
+            )
+            _emit(response)
+    finally:
+        session.close()
     return 0
 
 

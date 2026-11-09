@@ -1,0 +1,15 @@
+{
+  "account_type": 2,
+  "account_id": "A",
+  "stock_code": "600000.SH",
+  "traded_id": "TRADE01",
+  "traded_time": 1793345400000,
+  "traded_price": 12.5,
+  "traded_volume": 50,
+  "traded_amount": 625.0,
+  "order_id": 0,
+  "order_type": 23,
+  "order_sysid": "SYS1",
+  "strategy_name": "stra",
+  "order_remark": "备注"
+}

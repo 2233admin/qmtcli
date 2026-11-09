@@ -6,6 +6,22 @@
 
 中文 | [English](README.en.md)
 
+账户查询现支持**常驻会话复用、一次读取账户全貌及账户增量 JSONL 推送**。
+使用 `account-snapshot`，或在 `qmtcli server` 中调用 `account_subscribe` 后查询全貌。
+同账户重复查询复用连接，每次仍读取最新数据；[用法、恢复语义与 Python 版本边界](docs/account-session.md)。
+已验证的 MiniQMT 可用 `account-snapshot --backend native` 原生读取完整四项数据；
+`asset/positions/orders/trades --backend native` 均支持 Python 3.14，不导入 xtquant。
+
+支持实验性的 **MiniQMT 原生资产查询**：
+`qmtcli --path <安装目录> --account <账号> asset --backend native`。
+已在 Python 3.14 验证，不导入 xtquant；仍使用客户端自带的原生环形队列运行库，
+仅支持已核验的 Windows x64 客户端版本和普通股票账户。默认资产查询继续使用 SDK。
+用法、版本指纹和限制见 [原生资产查询](docs/native-asset.md)。
+
+行情快照现可使用 `full-tick 600000.SH 000001.SZ --backend native`，无需交易账户，
+不导入 xtquant；SDK 仍为默认。安装版本、缓存时间和接入限制见
+[原生行情快照](docs/native-quote.md)。
+
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
 - **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，下单有护栏。
@@ -16,7 +32,7 @@
 [xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) 文档逐条核对 43 个函数（见
 [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)）、对照
 [xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) 文档核对 25 组查询/交易接口
-（见[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)）；267 个自动化测试全绿，
+（见[`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)）；320 个自动化测试全绿，
 `xtquant` 全部 fake 掉，CI 不需要真实 QMT 环境；每周由 CI 里的 `doc-drift` job 自动重新核对一次
 是否跟官方文档产生了漂移。
 
@@ -506,6 +522,16 @@ python scripts/check_doc_drift.py
 给代码 Agent 的项目说明见 [`AGENTS.md`](AGENTS.md)。
 
 当前仓库保留了 PyPI 打包元数据，但不在当前工作流中发布。
+
+## Rust 原生入口
+
+独立行情核心 `qmt-quote` 和账户核心 `qmt-trade` 已拆入 Cargo workspace，
+统一入口为 `qmtcli-rs`。0.3.0 新增大 QMT `backend:formula` 的证券资料、
+日线 OHLCV/金额及缓存快照读取，无 Python/xtquant 运行时依赖。
+原有行情、账户查询 RPC/常驻 JSONL 保留，
+账户传输、回包关联和隔离 worker 已通过实际 DLL 与自有合成服务验证。
+真实账户验收及原生增量订阅尚未完成，不能当作完整 SDK 替代品。
+构建、命令和验收边界见 [Rust 使用说明](rust/README.md)。Python 入口继续保留。
 
 ## 同生态项目
 

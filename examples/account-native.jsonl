@@ -1,0 +1,3 @@
+{"id":1,"command":"account_snapshot","backend":"native","path":"D:\\QMT\\userdata_mini","account":"YOUR_ACCOUNT"}
+{"id":2,"command":"positions","backend":"native","path":"D:\\QMT\\userdata_mini","account":"YOUR_ACCOUNT"}
+{"id":3,"command":"orders","backend":"native","cancelable_only":true,"path":"D:\\QMT\\userdata_mini","account":"YOUR_ACCOUNT"}

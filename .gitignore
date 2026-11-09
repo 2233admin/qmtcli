@@ -15,3 +15,6 @@ build/
 /README_OLD.md
 /README_BEFORE_POLISH.md
 /.github-optimization.md
+/experiments/native-quote-rs/target/
+/target/
+!rust/qmt-trade/tests/fixtures/*.bin

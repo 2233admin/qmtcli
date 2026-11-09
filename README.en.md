@@ -6,13 +6,19 @@
 
 [中文](README.md) | English
 
+Experimental **native MiniQMT assets**:
+`qmtcli --path <install> --account <account> asset --backend native`.
+Verified on Python 3.14 without importing xtquant; it uses the client's native
+ringbuffer runtime and supports only the verified Windows x64 build and STOCK
+accounts. The SDK remains the default. See [usage and limits](docs/native-asset.md).
+
 A stable JSON interface in front of QMT / XtQuant, so any language and any agent can call it safely.
 
 **Current state**: 60+ CLI subcommands; checked function-by-function against the official
 [xtdata](https://dict.thinktrader.net/nativeApi/xtdata.html) doc, covering 43 functions (see
 [`docs/xtdata-alignment.md`](docs/xtdata-alignment.md)); checked against the official
 [xttrader](https://dict.thinktrader.net/nativeApi/xttrader.html) doc, covering 25 query/trading
-method groups (see [`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)); 267 automated tests,
+method groups (see [`docs/xttrader-alignment.md`](docs/xttrader-alignment.md)); 320 automated tests,
 all green, with `xtquant` fully faked so CI never needs a real QMT install; a weekly `doc-drift` CI
 job re-checks both matrices against the live doc pages for drift.
 
