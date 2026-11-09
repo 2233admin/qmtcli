@@ -282,14 +282,29 @@ class QMTGateway:
         else:
             self.account = None
 
+    def connection_state(self) -> str:
+        """One of ``not_connected``, ``connected_without_account``, ``connected``.
+
+        ``connect(subscribe=False)`` deliberately leaves ``account`` unset while the trader is
+        live, so ``trader is None`` alone cannot answer "is this gateway usable".
+        """
+        if self.trader is None:
+            return "not_connected"
+        return "connected_without_account" if self.account is None else "connected"
+
     def _require_connected(self) -> tuple[Any, Any]:
-        if self.trader is None or self.account is None:
-            raise RuntimeError("QMTGateway is not connected")
+        if self.trader is None:
+            raise RuntimeError("QMTGateway is not connected; call connect() first")
+        if self.account is None:
+            raise RuntimeError(
+                "QMTGateway is connected without an account; this call needs one. "
+                "Reconnect with connect(subscribe=True) and an account_id."
+            )
         return self.trader, self.account
 
     def _require_trader(self) -> Any:
         if self.trader is None:
-            raise RuntimeError("QMTGateway is not connected")
+            raise RuntimeError("QMTGateway is not connected; call connect() first")
         return self.trader
 
     def query_asset(self) -> Any:

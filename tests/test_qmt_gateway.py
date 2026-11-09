@@ -367,3 +367,37 @@ def test_sdk_diagnostics_reports_xtdc_available_false(monkeypatch):
     report = QMTGateway.sdk_diagnostics()
 
     assert report["xtdc_available"] is False
+
+
+# --- explicit connection state ---------------------------------------------------------------
+
+
+def test_gateway_connection_state_tracks_trader_and_account():
+    gateway = QMTGateway(QMTConnection("C:/qmt/userdata_mini", "123456"))
+
+    assert gateway.connection_state() == "not_connected"
+
+    gateway.trader = object()
+    assert gateway.connection_state() == "connected_without_account"
+
+    gateway.account = object()
+    assert gateway.connection_state() == "connected"
+
+
+def test_require_connected_names_the_missing_precondition():
+    gateway = QMTGateway(QMTConnection("C:/qmt/userdata_mini", "123456"))
+
+    with pytest.raises(RuntimeError, match=r"call connect\(\) first"):
+        gateway.query_asset()
+
+    gateway.trader = object()
+    with pytest.raises(RuntimeError, match="connected without an account"):
+        gateway.query_asset()
+
+
+def test_status_reports_explicit_sdk_state(monkeypatch, capsys):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+
+    assert main(["status"]) == 0
+
+    assert '"state": "sdk_missing"' in capsys.readouterr().out

@@ -135,7 +135,8 @@ def test_call_tool_command_argument_cannot_override_dispatch_target(monkeypatch)
     )
 
     payload = json.loads(result[0].text)
-    assert payload == {"ok": True, "data": {"xtquant": True}}
+    assert payload["ok"] is True
+    assert payload["data"]["xtquant"] is True
 
 
 def test_call_tool_unknown_tool_name_returns_error_envelope():

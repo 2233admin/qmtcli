@@ -258,5 +258,5 @@ def test_call_trader_with_account_true_still_requires_account_set():
     gateway.trader = object()
     gateway.account = None
 
-    with pytest.raises(RuntimeError, match="not connected"):
+    with pytest.raises(RuntimeError, match="connected without an account"):
         gateway.call_trader("query_stock_orders", with_account=True)

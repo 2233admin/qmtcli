@@ -1388,7 +1388,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _print_json(_agent_response(AGENT_EXAMPLES))
         return 0
     if args.command == "status":
-        _print_json({"xtquant": QMTGateway.is_available(args.path)})
+        available = QMTGateway.is_available(args.path)
+        _print_json({"xtquant": available, "state": "sdk_ready" if available else "sdk_missing"})
         return 0
     if args.command == "doctor":
         _print_json(QMTGateway.sdk_diagnostics(args.path, args.account))
@@ -1835,7 +1836,8 @@ def _handle_rpc_data(request: dict[str, Any], allow_subscribe: bool = False) -> 
     if command == "examples":
         return AGENT_EXAMPLES
     if command == "status":
-        return {"xtquant": QMTGateway.is_available(request.get("path"))}
+        available = QMTGateway.is_available(request.get("path"))
+        return {"xtquant": available, "state": "sdk_ready" if available else "sdk_missing"}
     if command == "doctor":
         return QMTGateway.sdk_diagnostics(request.get("path"), request.get("account"))
     if command == "data_call":
