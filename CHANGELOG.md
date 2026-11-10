@@ -8,8 +8,9 @@ begin.
 ## Unreleased
 
 - Added `scripts/qmt-open-readiness.ps1` as the source for the local QMT readiness probe. It parses
-  fractional `timetag` values and rejects ticks older than 60 seconds or from the future during
-  continuous sessions; the existing lunch and post-close behavior remains unchanged.
+  fractional `timetag` values and evaluates tick freshness at quote-response time, rejecting
+  pre-open, over-60-second-old or future ticks even when a request crosses session open; lunch and
+  post-close remain `not-evaluated`.
 
 - Gave `QMTGateway` an explicit connection state. `connection_state()` returns `not_connected`,
   `connected_without_account` or `connected`; the two `RuntimeError` messages for a missing trader

@@ -82,6 +82,15 @@ function Get-TickFreshnessProblem([datetime]$tickAt, [datetime]$observedAt, [dat
     return $null
 }
 
+function Get-QuoteFreshness([datetime]$tickAt, [datetime]$observedAt) {
+    $sessionStart = Get-SessionStart $observedAt
+    if (-not $sessionStart) { return $null }
+    return [pscustomobject]@{
+        AgeSeconds = [math]::Round(($observedAt - $tickAt).TotalSeconds, 1)
+        Problem = Get-TickFreshnessProblem $tickAt $observedAt $sessionStart
+    }
+}
+
 function Assert-SelfTest([bool]$condition, [string]$name) {
     if (-not $condition) { throw "self-test failed: $name" }
 }
@@ -107,6 +116,16 @@ if ($SelfTest) {
         }
     }
 
+    $probeStartedAt = [datetime]::new(2026, 11, 10, 12, 59, 40)
+    $quoteObservedAt = [datetime]::new(2026, 11, 10, 13, 0, 5)
+    $staleTickAt = ConvertFrom-TickTimestamp '20261110 12:59:59'
+    Assert-SelfTest ($null -eq (Get-SessionStart $probeStartedAt)) 'crossover-start-before-open'
+    $crossover = Get-QuoteFreshness $staleTickAt $quoteObservedAt
+    Assert-SelfTest ($null -ne $crossover -and $crossover.Problem -eq 'quote-not-updating-since-open') 'session-opening-crossover'
+    $freshTickAt = ConvertFrom-TickTimestamp '20261110 13:00:04.5'
+    $freshness = Get-QuoteFreshness $freshTickAt $quoteObservedAt
+    Assert-SelfTest ($null -ne $freshness -and $null -eq $freshness.Problem -and $freshness.AgeSeconds -eq 0.5) 'session-opening-fresh-tick'
+
     $sessionCases = @(
         @{ Name = 'before-morning'; Time = [datetime]::new(2026, 11, 10, 9, 29, 59); Expected = $null },
         @{ Name = 'morning-open'; Time = [datetime]::new(2026, 11, 10, 9, 30, 0); Expected = [datetime]::new(2026, 11, 10, 9, 30, 0) },
@@ -125,7 +144,7 @@ if ($SelfTest) {
         }
     }
 
-    Write-Output 'SELFTEST_OK tick-freshness=6 session-boundaries=7'
+    Write-Output 'SELFTEST_OK tick-freshness=8 session-boundaries=7'
     exit 0
 }
 
@@ -216,12 +235,14 @@ if ($logReadable -and $now -ge $deadline -and -not $tradedayToday) {
 }
 
 # --- market data freshness during continuous sessions -----------------------
-$sessionStart = Get-SessionStart $now
+$quoteFreshness = $null
+if ($tickAt -and $quoteObservedAt) {
+    $quoteFreshness = Get-QuoteFreshness $tickAt $quoteObservedAt
+}
 $tickAgeSeconds = $null
-if ($sessionStart -and $tickAt -and $quoteObservedAt) {
-    $tickAgeSeconds = [math]::Round(($quoteObservedAt - $tickAt).TotalSeconds, 1)
-    $quoteProblem = Get-TickFreshnessProblem $tickAt $quoteObservedAt $sessionStart
-    if ($quoteProblem) { [void]$problems.Add($quoteProblem) }
+if ($quoteFreshness) {
+    $tickAgeSeconds = $quoteFreshness.AgeSeconds
+    if ($quoteFreshness.Problem) { [void]$problems.Add($quoteFreshness.Problem) }
 }
 
 $tickAge = 'not-evaluated'
