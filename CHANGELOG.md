@@ -7,6 +7,12 @@ begin.
 
 ## Unreleased
 
+- Added `scripts/bridge_scan.py`, the same four-rule trend screen ported off the frozen TDX feed
+  onto bridge bars: one full-market tick call plus 26 daily bars in 300-symbol chunks, ranked by
+  percentile. The report names its own data date from the tick timetag, so a stale feed shows up
+  instead of repeating yesterday. Two gaps against the TQ version: the bridge exposes no instrument
+  names, so ST names cannot be filtered out, and the 20-day high now comes from the bar high.
+
 - Added `scripts/bridge_watch.py`, a read-only loopback probe that prints available cash, every
   holding and a live tick per symbol with its `timetag`. It exists because the TDX/TQ feed on this
   host stopped at 2026-11-09 while the bridge kept serving the same session's data, so a watch built
