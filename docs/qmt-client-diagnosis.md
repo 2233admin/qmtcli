@@ -83,3 +83,24 @@ Signals the proxy cannot fake:
 | `sdk-capabilities` exits 1 with `os error 10061` | nothing is listening on loopback: bridge not started, or already stopped |
 
 The three login hosts come from `config/customer.lua` → `xtaddress.server`, but a probe of them carries no verdict while the proxy is up.
+
+## Open-session readiness probe
+
+The tracked source is `scripts/qmt-open-readiness.ps1`. The deployed Windows scheduler entry calls
+`%USERPROFILE%\.pi-schedule\checks\qmt-open-readiness.ps1`; deploy the tracked file there without
+changing the QMT client or connection configuration.
+
+During the continuous sessions (09:30–11:30 and 13:00–15:00 local time), the probe ages the
+`timetag` from `/api/market/tick?symbol=600000.SH` against the local time immediately after the
+bridge response. `MarketTickHandler` forwards the `get_full_tick()` tick record unchanged
+(`bridge/daqmt_server.py`), so this is the QMT data timestamp, not an HTTP heartbeat. The probe
+requires the tick to be at or after the current session open, not in the future, and no more than
+60 seconds old. A 60-second age is an operational cutoff, not a vendor latency guarantee; a halted
+reference symbol or host clock error can report not-ready. When enabled on the five-minute interval,
+the scheduler may not observe a stale tick until the next run. This check covers 600000.SH only; it
+does not prove every symbol or the order route is healthy.
+
+Outside those continuous sessions, including lunch and after 15:00, `tick_age_s=not-evaluated`.
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qmt-open-readiness.ps1 -SelfTest`
+to check fractional and whole-second timestamp parsing, stale/fresh/future outcomes, and session
+boundaries without contacting QMT.
