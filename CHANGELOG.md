@@ -7,6 +7,12 @@ begin.
 
 ## Unreleased
 
+- Added `scripts/bridge_watch.py`, a read-only loopback probe that prints available cash, every
+  holding and a live tick per symbol with its `timetag`. It exists because the TDX/TQ feed on this
+  host stopped at 2026-11-09 while the bridge kept serving the same session's data, so a watch built
+  on TQ reported a stale date without failing. Every endpoint it calls is a GET; it cannot place or
+  cancel an order.
+
 - Gave `QMTGateway` an explicit connection state. `connection_state()` returns `not_connected`,
   `connected_without_account` or `connected`; the two `RuntimeError` messages for a missing trader
   and a missing account now name the missing precondition instead of sharing one "is not connected"
