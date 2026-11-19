@@ -81,7 +81,16 @@ def main() -> int:
     args = parser.parse_args()
 
     config = json.loads(CONNECTION.read_text(encoding="utf-8"))
-    ticks = get(config, "/api/market/tick?symbols=SH,SZ")["ticks"]
+    try:
+        ticks = get(config, "/api/market/tick?symbols=SH,SZ")["ticks"]
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, ConnectionRefusedError):
+            # The QMT-side strategy serves the bridge only while it runs; outside
+            # a session it is intentionally down, which is not a scan failure.
+            print(f"skipped: bridge not listening at {config['endpoint']} "
+                  f"(QMT strategy not running)")
+            return 0
+        raise
     stamp = max((tick.get("timetag", "") for tick in ticks.values()), default="")
 
     lines = []
