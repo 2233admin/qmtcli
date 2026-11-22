@@ -7,6 +7,13 @@ begin.
 
 ## Unreleased
 
+- Added `qmtcli market sectors|stocks|instrument`, read-only market data through the strategy
+  bridge inside the full QMT client (`bridge/daqmt_server.py`). It does not import `xtquant`, so it
+  is the one market path that still answers where `xtquant` cannot connect to full QMT. Every call
+  raises `BridgeError` instead of returning empty data, so "no such record" stays distinguishable
+  from "the bridge did not answer". Verified live against `127.0.0.1:9001`: root and nested sector
+  expansion, 5000+ code sector lists, and contract details for `600000.SH` / `000001.SZ`.
+
 - Added `scripts/bridge_scan.py`, the same four-rule trend screen ported off the frozen TDX feed
   onto bridge bars: one full-market tick call plus 26 daily bars in 300-symbol chunks, ranked by
   percentile. The report names its own data date from the tick timetag, so a stale feed shows up
