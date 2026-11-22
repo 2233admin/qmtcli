@@ -22,6 +22,10 @@
 不导入 xtquant；SDK 仍为默认。安装版本、缓存时间和接入限制见
 [原生行情快照](docs/native-quote.md)。
 
+大 QMT 只读行情走 `market` 子命令，经客户端内的策略桥（`bridge/daqmt_server.py`）取数，
+不经 `xtquant`：`qmtcli market sectors|stocks|instrument`。这是唯一在
+`xtquant` 连不上完整 QMT 客户端时仍可用的行情路径。
+
 给 QMT / XtQuant 装一层稳定的接口，让任何语言、任何 Agent 都能安全稳定的调用它。
 
 - **一句话**：让 AI 用 JSON 跟 QMT 聊 A 股——行情账户随便查，下单有护栏。
@@ -498,6 +502,7 @@ qmtcli sector --help
 qmtcli fields --help
 qmtcli trade-call --help
 qmtcli watch --help
+qmtcli market --help
 qmtcli rpc --help
 qmtcli server --help
 qmtcli mcp --help
