@@ -309,3 +309,21 @@ def test_a_short_form_reads_the_new_row_back_by_shape(server, monkeypatch):
 
     assert route.replies[0][0] == 202
     assert route.replies[0][1]["order_id"] == "143327"
+
+
+@pytest.mark.parametrize("status,expected", [(50, "已报"), (54, "已撤"), (56, "已成交")])
+def test_a_verified_status_reports_its_name(server, status, expected):
+    order = _FakeOrder("status-name")
+    order.m_nOrderStatus = status
+
+    assert server._order_to_dict(order)["status_name"] == expected
+
+
+def test_an_unverified_status_reports_null_not_a_guess(server):
+    order = _FakeOrder("status-unknown")
+    order.m_nOrderStatus = 57
+
+    record = server._order_to_dict(order)
+
+    assert record["status"] == 57
+    assert record["status_name"] is None

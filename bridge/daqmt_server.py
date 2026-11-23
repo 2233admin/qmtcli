@@ -242,6 +242,15 @@ def _position_to_dict(p):
     }
 
 
+# Empirically verified against a live session on 2026-11-23. The enum is not
+# documented in catalog.json, so an unknown code reports null, not a guess.
+ORDER_STATUS_NAMES = {
+    50: '已报',
+    54: '已撤',
+    56: '已成交',
+}
+
+
 def _order_to_dict(o):
     """Convert a DaQMT order object to a plain dict.
 
@@ -259,6 +268,7 @@ def _order_to_dict(o):
     volume = getattr(o, 'm_nVolumeTotalOriginal', None)
     if volume is None:
         volume = getattr(o, 'm_nVolume', 0)
+    status = _safe_int(getattr(o, 'm_nOrderStatus', 0))
     return {
         'order_id': getattr(o, 'm_strOrderSysID', ''),
         'user_order_id': getattr(o, 'm_strRemark', '') or '',
@@ -270,7 +280,8 @@ def _order_to_dict(o):
         'volume': _safe_int(volume),
         'filled_volume': _safe_int(getattr(o, 'm_nVolumeTraded', 0)),
         'remaining_volume': _safe_int(getattr(o, 'm_nVolumeTotal', 0)),
-        'status': _safe_int(getattr(o, 'm_nOrderStatus', 0)),
+        'status': status,
+        'status_name': ORDER_STATUS_NAMES.get(status),
         'order_time': getattr(o, 'm_strInsertDateTime', None),
     }
 
