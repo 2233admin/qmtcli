@@ -924,9 +924,10 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Brings a fresh host from a broker QMT install to a verified bridge. "
             "Reports only by default. --apply copies bridge/daqmt_server.py to "
-            "<qmt-root>/python/大QMT.py, deploys the five assets connection.json pins "
-            "into its resource_dir, retargets their sha256 digests, and runs qmtcli-rs "
-            "setup when connection.json is missing. Never downloads QMT or the fixed "
+            "<qmt-root>/python/大QMT.py, overwriting a stale copy, deploys the five "
+            "assets connection.json pins into its resource_dir, retargets their sha256 "
+            "digests, and runs qmtcli-rs setup when connection.json is missing. Never "
+            "downloads QMT or the fixed "
             "release, and never writes the bridge secret (qmtcli-rs setup owns that)."
         ),
     )

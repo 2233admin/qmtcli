@@ -244,14 +244,19 @@ def run(
 
     if root is not None and (root / "python").is_dir():
         target = root / "python" / STRATEGY_FILENAME
-        if target.is_file():
-            same = _sha256(target) == BRIDGE_SHA256
-            steps.append(_step("strategy_file", same, f"{target} {'already current' if same else 'DIFFERS'}"))
+        if target.is_file() and _sha256(target) == BRIDGE_SHA256:
+            steps.append(_step("strategy_file", True, f"{target} already current"))
         elif apply and source_ok:
+            existed = target.is_file()
             shutil.copyfile(source, target)
-            steps.append(_step("strategy_file", _sha256(target) == BRIDGE_SHA256, f"copied to {target}"))
+            steps.append(_step("strategy_file", _sha256(target) == BRIDGE_SHA256,
+                               f"{target} {'overwritten' if existed else 'copied'}"))
+        elif target.is_file():
+            steps.append(_step("strategy_file", False,
+                               f"{target} DIFFERS (rerun with --apply to overwrite)"))
         else:
-            steps.append(_step("strategy_file", False, f"{target} absent (rerun with --apply to copy)"))
+            steps.append(_step("strategy_file", False,
+                               f"{target} absent (rerun with --apply to copy)"))
     elif root is None:
         steps.append(_step("strategy_file", False, "unknown: no qmt_root"))
 

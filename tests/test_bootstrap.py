@@ -73,9 +73,10 @@ def test_apply_copies_the_verified_bridge_file(tmp_path, monkeypatch):
     assert _steps(result)["strategy_file"]["ok"] is True
 
 
-def test_a_different_strategy_file_is_a_failure_not_a_silent_overwrite(tmp_path, monkeypatch):
+def test_apply_overwrites_a_stale_strategy_file(tmp_path, monkeypatch):
     source, root = _layout(tmp_path, monkeypatch)
-    (root / "python" / bootstrap.STRATEGY_FILENAME).write_text("# older bridge", encoding="utf-8")
+    target = root / "python" / bootstrap.STRATEGY_FILENAME
+    target.write_text("# older bridge", encoding="utf-8")
 
     result = bootstrap.run(
         qmt_root=str(root),
@@ -87,11 +88,28 @@ def test_a_different_strategy_file_is_a_failure_not_a_silent_overwrite(tmp_path,
     )
 
     step = _steps(result)["strategy_file"]
+    assert step["ok"] is True
+    assert "overwritten" in step["detail"]
+    assert target.read_text(encoding="utf-8") == "# bridge"
+
+
+def test_report_mode_leaves_a_stale_strategy_file_alone(tmp_path, monkeypatch):
+    source, root = _layout(tmp_path, monkeypatch)
+    target = root / "python" / bootstrap.STRATEGY_FILENAME
+    target.write_text("# older bridge", encoding="utf-8")
+
+    result = bootstrap.run(
+        qmt_root=str(root),
+        account="123",
+        port=19001,
+        host_dir=str(tmp_path / "host"),
+        bridge_src=str(source),
+    )
+
+    step = _steps(result)["strategy_file"]
     assert step["ok"] is False
-    assert "DIFFERS" in step["detail"]
-    assert (root / "python" / bootstrap.STRATEGY_FILENAME).read_text(
-        encoding="utf-8"
-    ) == "# older bridge"
+    assert "--apply" in step["detail"]
+    assert target.read_text(encoding="utf-8") == "# older bridge"
 
 
 def test_missing_release_and_connection_are_reported_with_the_command_that_fixes_them(
