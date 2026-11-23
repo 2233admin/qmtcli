@@ -188,3 +188,40 @@ def test_an_http_refusal_on_an_account_endpoint_raises(tmp_path, monkeypatch):
 
     with pytest.raises(daqmt_market.BridgeError, match="unreachable"):
         daqmt_market.positions(host_dir=str(host))
+
+
+def test_place_order_posts_a_limit_order_body(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.place_order(
+        side="buy", stock="300308.SZ", volume=100, price=395.0, host_dir=str(host)
+    )
+
+    sent = captured[0]
+    assert sent.full_url.endswith("/api/order/buy")
+    assert sent.get_method() == "POST"
+    assert json.loads(sent.data) == {
+        "stock": "300308.SZ",
+        "volume": 100,
+        "price": 395.0,
+        "prType": 11,
+    }
+
+
+def test_place_order_rejects_a_side_that_is_not_buy_or_sell(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    with pytest.raises(ValueError, match="side must be buy or sell"):
+        daqmt_market.place_order(
+            side="short", stock="300308.SZ", volume=100, price=395.0, host_dir=str(host)
+        )
+
+
+def test_cancel_order_targets_one_sys_id(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.cancel_order("143327", host_dir=str(host))
+
+    sent = captured[0]
+    assert sent.full_url.endswith("/api/order/cancel_by_id")
+    assert json.loads(sent.data) == {"order_sys_id": "143327", "account": "stock"}

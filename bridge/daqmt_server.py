@@ -268,11 +268,13 @@ def _query_account(accountID, account_type):
 
 
 def _query_orders(accountID, account_type):
-    return globals()['get_trade_detail_data'](accountID, account_type, 'order', 'qmt') or []
+    # No strategyName argument: it filters the result set, and passing one
+    # silently returned [] for every order not placed under that name.
+    return globals()['get_trade_detail_data'](accountID, account_type, 'order') or []
 
 
 def _query_trades(accountID, account_type):
-    return globals()['get_trade_detail_data'](accountID, account_type, 'trade', 'qmt') or []
+    return globals()['get_trade_detail_data'](accountID, account_type, 'trade') or []
 
 
 def _trade_to_dict(t) -> dict:

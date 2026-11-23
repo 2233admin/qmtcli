@@ -219,3 +219,77 @@ def orders(
 def trades(*, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
     """Today's fills (GET /api/trade/status)."""
     return get("/api/trade/status", host_dir=host_dir, timeout=timeout)
+
+
+def post(
+    path: str,
+    body: dict[str, Any],
+    *,
+    host_dir: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> Any:
+    """POST one bridge endpoint that is not the generic ``/api/call`` route."""
+    endpoint, secret, account = _resolve(_load_connection(host_dir))
+    request = urllib.request.Request(
+        f"{endpoint}{path}",
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Bridge-Secret": secret,
+            "X-Bridge-Account": account,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise BridgeError(f"bridge refused {path}: HTTP {exc.code} {detail}") from None
+    except urllib.error.URLError as exc:
+        raise BridgeError(
+            f"bridge unreachable at {endpoint}: {exc.reason}. "
+            "Is the strategy running inside the QMT client?"
+        ) from None
+    except (OSError, ValueError) as exc:
+        raise BridgeError(f"bridge POST {path} failed: {exc}") from None
+
+
+def place_order(
+    *,
+    side: str,
+    stock: str,
+    volume: int,
+    price: float,
+    user_order_id: str | None = None,
+    host_dir: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> Any:
+    """Submit one limit order (POST /api/order/buy|sell).
+
+    A 202 ``submitted`` means ``passorder`` returned, not that the broker
+    accepted the order. Read ``orders()`` for the outcome.
+    """
+    if side not in ("buy", "sell"):
+        raise ValueError("side must be buy or sell")
+    body: dict[str, Any] = {
+        "stock": stock, "volume": volume, "price": price, "prType": 11,
+    }
+    if user_order_id:
+        body["user_order_id"] = user_order_id
+    return post(f"/api/order/{side}", body, host_dir=host_dir, timeout=timeout)
+
+
+def cancel_order(
+    order_sys_id: str,
+    *,
+    host_dir: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> Any:
+    """Cancel one order by its ``m_strOrderSysID`` (POST /api/order/cancel_by_id)."""
+    return post(
+        "/api/order/cancel_by_id",
+        {"order_sys_id": order_sys_id, "account": "stock"},
+        host_dir=host_dir,
+        timeout=timeout,
+    )

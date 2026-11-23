@@ -1433,18 +1433,45 @@ def build_parser() -> argparse.ArgumentParser:
     trade_call.add_argument("--kwargs", default="{}", help="JSON keyword args object; default: {}")
     trade_call.add_argument("--no-account", action="store_true", help="Do not prepend StockAccount")
 
-    buy = subparsers.add_parser("buy", help="submit a fixed-price stock buy order")
+    buy = subparsers.add_parser(
+        "buy",
+        help="submit a fixed-price stock buy order through the strategy bridge",
+        description="Submit one limit buy order. A 202 reply means passorder returned, "
+        "not that the broker accepted it; check 'qmtcli account orders' for the outcome.",
+    )
     buy.add_argument("symbol", help="Symbol such as 600519.SH")
     buy.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
     buy.add_argument("price", type=float, help="Limit price; must be positive")
+    buy.add_argument(
+        "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
+    )
+    buy.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
 
-    sell = subparsers.add_parser("sell", help="submit a fixed-price stock sell order")
+    sell = subparsers.add_parser(
+        "sell",
+        help="submit a fixed-price stock sell order through the strategy bridge",
+        description="Submit one limit sell order. A 202 reply means passorder returned, "
+        "not that the broker accepted it; check 'qmtcli account orders' for the outcome.",
+    )
     sell.add_argument("symbol", help="Symbol such as 600519.SH")
     sell.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
     sell.add_argument("price", type=float, help="Limit price; must be positive")
+    sell.add_argument(
+        "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
+    )
+    sell.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
 
-    cancel = subparsers.add_parser("cancel", help="cancel an order by QMT order id")
-    cancel.add_argument("order_id", help="QMT order id")
+    cancel = subparsers.add_parser(
+        "cancel",
+        help="cancel an order by QMT order id through the strategy bridge",
+        description="Cancel one order by its m_strOrderSysID (the order_id reported by "
+        "'qmtcli account orders').",
+    )
+    cancel.add_argument("order_id", help="QMT order id (m_strOrderSysID)")
+    cancel.add_argument(
+        "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
+    )
+    cancel.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
 
     watch = subparsers.add_parser(
         "watch",
@@ -1589,6 +1616,37 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def _handle_order_command(args: argparse.Namespace) -> int:
+    """Place or cancel one order through the strategy bridge.
+
+    The bridge answers 202 as soon as passorder returns; that is not a
+    broker acknowledgement, so a caller that needs the outcome must read
+    `qmtcli account orders` afterwards.
+    """
+    from qmtcli import daqmt_market
+
+    options = {
+        "host_dir": getattr(args, "host_dir", "") or None,
+        "timeout": getattr(args, "timeout", 5.0),
+    }
+    try:
+        if args.command == "cancel":
+            result = daqmt_market.cancel_order(args.order_id, **options)
+        else:
+            result = daqmt_market.place_order(
+                side=args.command,
+                stock=args.symbol,
+                volume=args.volume,
+                price=args.price,
+                **options,
+            )
+    except daqmt_market.BridgeError as exc:
+        _print_json({"ok": False, "error": str(exc)})
+        return 1
+    _print_json({"ok": True, "data": result})
+    return 0
+
+
 def _run_command(args: argparse.Namespace) -> int:
     if args.command == "full-tick" and args.backend == "native":
         _print_json(_native_dispatch(vars(args), None))
@@ -1690,6 +1748,9 @@ def _run_command(args: argparse.Namespace) -> int:
         _print_json(_handle_data_command(args))
         return 0
 
+    if args.command in {"buy", "sell", "cancel"}:
+        return _handle_order_command(args)
+
     gateway = _connect(args)
     if args.command == "asset":
         _print_json(gateway.query_asset())
@@ -1702,12 +1763,6 @@ def _run_command(args: argparse.Namespace) -> int:
     elif args.command in TRADE_QUERY_COMMANDS:
         spec = TRADE_QUERY_COMMANDS[args.command]
         _print_json(gateway.call_trader(spec["method"], with_account=spec["with_account"]))
-    elif args.command == "buy":
-        _print_json(gateway.submit_order(args.symbol, "BUY", args.volume, args.price))
-    elif args.command == "sell":
-        _print_json(gateway.submit_order(args.symbol, "SELL", args.volume, args.price))
-    elif args.command == "cancel":
-        _print_json(gateway.cancel_order(args.order_id))
     elif args.command == "trade-call":
         _print_json(
             gateway.call_trader(
@@ -2294,12 +2349,19 @@ def _handle_rpc_data(
         return gateway.query_orders(cancelable_only=request.get("cancelable_only", False))
     if command == "trades":
         return gateway.query_trades()
-    if command == "buy":
-        return gateway.submit_order(request["symbol"], "BUY", request["volume"], request["price"])
-    if command == "sell":
-        return gateway.submit_order(request["symbol"], "SELL", request["volume"], request["price"])
+    if command in ("buy", "sell"):
+        from qmtcli import daqmt_market
+
+        return daqmt_market.place_order(
+            side=command,
+            stock=request["symbol"],
+            volume=request["volume"],
+            price=request["price"],
+        )
     if command == "cancel":
-        return gateway.cancel_order(request["order_id"])
+        from qmtcli import daqmt_market
+
+        return daqmt_market.cancel_order(request["order_id"])
     if command == "trade_call":
         return gateway.call_trader(
             request["method"],

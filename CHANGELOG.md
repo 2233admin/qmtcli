@@ -7,6 +7,17 @@ begin.
 
 ## Unreleased
 
+- `qmtcli buy`, `sell` and `cancel` now go through the strategy bridge, the same way `qmtcli account`
+  reads do. They used to call `XtQuantTrader.order_stock` in-process, which is the route that cannot
+  connect to full QMT (the -1/-12 failure). The bridge already exposed `POST /api/order/buy|sell` and
+  `/api/order/cancel_by_id`; only the client side was missing. The rpc/server surface routes the same
+  three commands through the bridge too, so one command no longer means two behaviours.
+
+- Fixed `/api/order/status` and `/api/trade/status` returning empty on an account that had orders and
+  fills. `_query_orders` and `_query_trades` passed `'qmt'` as `get_trade_detail_data`'s fourth
+  argument, which is `strategyName`, so the result set was filtered to a strategy that does not exist.
+  Measured against the live client: no fourth argument returns the order, `'qmt'` returns `[]`.
+
 - `qmtcli bootstrap --apply` now installs the whole bridge, not just the entry point. It deploys all
   five files `connection.json` pins by sha256 into `resource_dir` and retargets their digests, so a
   new host no longer needs four hand-copied assets and a manual digest edit. The `bridge_assets`
