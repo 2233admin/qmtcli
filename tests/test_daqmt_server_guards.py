@@ -99,6 +99,11 @@ def test_an_amount_above_the_cap_is_rejected(server):
         _guard(server, price=396.24, volume=2000, cap=500000)
 
 
+def test_a_volume_off_the_lot_size_is_rejected(server):
+    with pytest.raises(ValueError, match="multiple of 100"):
+        _guard(server, volume=150)
+
+
 def test_a_market_order_skips_the_price_band(server):
     _guard(server, price=0.0, price_type=42)
 

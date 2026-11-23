@@ -718,6 +718,8 @@ def _order_guard(handler, stock, price, volume, price_type):
     cap = float((_SDK_CONFIG or {}).get("max_order_amount") or 0)
     if cap and price * volume > cap:
         raise ValueError("order amount %.2f exceeds max_order_amount %.2f" % (price * volume, cap))
+    if volume % 100 != 0:
+        raise ValueError("A-share order volume must be a positive multiple of 100")
     reader = getattr(handler._ctx(), "get_instrument_detail", None)
     if price_type != 11 or not callable(reader):
         return
