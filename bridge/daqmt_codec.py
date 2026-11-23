@@ -12,54 +12,60 @@ MAX_SAFE_INTEGER = 9007199254740991
 
 
 def encode(value):
-    state = {'active': set(), 'items': 0}
+    state = {"active": set(), "items": 0}
     return _encode(value, state, 0)
 
 
 def _encode(value, state, depth):
-    state['items'] += 1
-    if depth > MAX_DEPTH or state['items'] > MAX_ITEMS:
-        raise ValueError('SDK result exceeds structured-value limits')
+    state["items"] += 1
+    if depth > MAX_DEPTH or state["items"] > MAX_ITEMS:
+        raise ValueError("SDK result exceeds structured-value limits")
     if value is None or isinstance(value, (str, bool)):
         return value
     kind = type(value).__name__
     # A native type can expose __name__ but not __module__; its metaclass raises
     # AttributeError(name). The module only decides the pandas/numpy branches.
-    module = getattr(type(value), '__module__', '') or ''
-    if kind in ('NAType', 'NaTType') and module.startswith('pandas'):
-        return {'$type': 'missing', 'value': 'NA' if kind == 'NAType' else 'NaT'}
+    module = getattr(type(value), "__module__", "") or ""
+    if kind in ("NAType", "NaTType") and module.startswith("pandas"):
+        return {"$type": "missing", "value": "NA" if kind == "NAType" else "NaT"}
     if isinstance(value, numbers.Integral):
         integer = int(value)
         if abs(integer) > MAX_SAFE_INTEGER:
-            return {'$type': 'integer', 'value': str(integer)}
+            return {"$type": "integer", "value": str(integer)}
         return integer
     if isinstance(value, numbers.Real):
         number = float(value)
         if not math.isfinite(number):
-            label = 'nan' if math.isnan(number) else ('inf' if number > 0 else '-inf')
-            return {'$type': 'float', 'value': label}
+            label = "nan" if math.isnan(number) else ("inf" if number > 0 else "-inf")
+            return {"$type": "float", "value": label}
         return number
     if isinstance(value, datetime.datetime):
-        result = {'$type': 'timestamp' if kind == 'Timestamp' else 'datetime',
-                  'value': value.isoformat()}
-        if kind == 'Timestamp':
-            result['nanoseconds'] = str(value.value)
+        result = {
+            "$type": "timestamp" if kind == "Timestamp" else "datetime",
+            "value": value.isoformat(),
+        }
+        if kind == "Timestamp":
+            result["nanoseconds"] = str(value.value)
         return result
     if isinstance(value, datetime.date):
-        return {'$type': 'date', 'value': value.isoformat()}
+        return {"$type": "date", "value": value.isoformat()}
     if isinstance(value, datetime.timedelta):
-        return {'$type': 'timedelta', 'days': value.days,
-                'seconds': value.seconds, 'microseconds': value.microseconds}
+        return {
+            "$type": "timedelta",
+            "days": value.days,
+            "seconds": value.seconds,
+            "microseconds": value.microseconds,
+        }
     if isinstance(value, (bytes, bytearray, memoryview)):
-        return {'$type': 'bytes', 'base64': base64.b64encode(bytes(value)).decode('ascii')}
+        return {"$type": "bytes", "base64": base64.b64encode(bytes(value)).decode("ascii")}
     identity = id(value)
-    if identity in state['active']:
-        raise ValueError('cyclic SDK result')
-    state['active'].add(identity)
+    if identity in state["active"]:
+        raise ValueError("cyclic SDK result")
+    state["active"].add(identity)
     try:
         return _container(value, state, depth, module, kind)
     finally:
-        state['active'].remove(identity)
+        state["active"].remove(identity)
 
 
 def _container(value, state, depth, module, kind):
@@ -67,110 +73,133 @@ def _container(value, state, depth, module, kind):
         return _encode(part, state, depth + 1)
 
     if isinstance(value, dict):
-        if all(isinstance(key, str) for key in value) and '$type' not in value:
+        if all(isinstance(key, str) for key in value) and "$type" not in value:
             return {key: item(part) for key, part in value.items()}
-        return {'$type': 'mapping', 'entries': [[item(key), item(part)]
-                                               for key, part in value.items()]}
+        return {
+            "$type": "mapping",
+            "entries": [[item(key), item(part)] for key, part in value.items()],
+        }
     if isinstance(value, list):
         return [item(part) for part in value]
     if isinstance(value, tuple):
-        return {'$type': 'tuple', 'items': [item(part) for part in value]}
-    if module.startswith('pandas') and kind == 'DataFrame':
-        return {'$type': 'dataframe', 'columns': item(list(value.columns)),
-                'index': item(list(value.index)), 'index_names': item(list(value.index.names)),
-                'column_names': item(list(value.columns.names)),
-                'dtypes': [str(dtype) for dtype in value.dtypes],
-                'data': [[item(part) for part in row]
-                         for row in value.itertuples(index=False, name=None)]}
-    if module.startswith('pandas') and kind == 'Series':
-        return {'$type': 'series', 'name': item(value.name),
-                'index': item(list(value.index)), 'index_names': item(list(value.index.names)),
-                'dtype': str(value.dtype), 'data': item(value.tolist())}
-    if module.startswith('pandas') and kind == 'Panel':
-        return {'$type': 'panel', 'items': item(list(value.items)),
-                'major_axis': item(list(value.major_axis)),
-                'minor_axis': item(list(value.minor_axis)), 'data': item(value.values)}
-    if module.startswith('numpy') and hasattr(value, 'dtype'):
-        if getattr(value, 'ndim', 0) == 0:
-            if str(value.dtype).startswith(('datetime64', 'timedelta64')):
-                return {'$type': 'numpy-scalar', 'dtype': str(value.dtype), 'value': str(value)}
+        return {"$type": "tuple", "items": [item(part) for part in value]}
+    if module.startswith("pandas") and kind == "DataFrame":
+        return {
+            "$type": "dataframe",
+            "columns": item(list(value.columns)),
+            "index": item(list(value.index)),
+            "index_names": item(list(value.index.names)),
+            "column_names": item(list(value.columns.names)),
+            "dtypes": [str(dtype) for dtype in value.dtypes],
+            "data": [
+                [item(part) for part in row] for row in value.itertuples(index=False, name=None)
+            ],
+        }
+    if module.startswith("pandas") and kind == "Series":
+        return {
+            "$type": "series",
+            "name": item(value.name),
+            "index": item(list(value.index)),
+            "index_names": item(list(value.index.names)),
+            "dtype": str(value.dtype),
+            "data": item(value.tolist()),
+        }
+    if module.startswith("pandas") and kind == "Panel":
+        return {
+            "$type": "panel",
+            "items": item(list(value.items)),
+            "major_axis": item(list(value.major_axis)),
+            "minor_axis": item(list(value.minor_axis)),
+            "data": item(value.values),
+        }
+    if module.startswith("numpy") and hasattr(value, "dtype"):
+        if getattr(value, "ndim", 0) == 0:
+            if str(value.dtype).startswith(("datetime64", "timedelta64")):
+                return {"$type": "numpy-scalar", "dtype": str(value.dtype), "value": str(value)}
             return item(value.item())
-        return {'$type': 'ndarray', 'dtype': str(value.dtype),
-                'shape': list(value.shape), 'data': item(value.tolist())}
+        return {
+            "$type": "ndarray",
+            "dtype": str(value.dtype),
+            "shape": list(value.shape),
+            "data": item(value.tolist()),
+        }
     fields = {}
     for name in dir(value):
-        if not name.startswith('m_'):
+        if not name.startswith("m_"):
             continue
         try:
             attribute = getattr(value, name)
         except Exception as error:
             # A native getter can raise on one field; keep the rest and mark this
             # one so the caller fails closed instead of losing the whole result.
-            fields[name] = {'$type': 'unreadable', 'class': type(error).__name__}
+            fields[name] = {"$type": "unreadable", "class": type(error).__name__}
             continue
         if callable(attribute):
             continue
         try:
             fields[name] = item(attribute)
         except TypeError:
-            fields[name] = {'$type': 'unsupported', 'class': type(attribute).__name__}
+            fields[name] = {"$type": "unsupported", "class": type(attribute).__name__}
     if fields:
-        return {'$type': 'sdk-object', 'class': kind, 'fields': fields}
-    raise TypeError('unsupported SDK result type: ' + kind)
+        return {"$type": "sdk-object", "class": kind, "fields": fields}
+    raise TypeError("unsupported SDK result type: " + kind)
 
 
 def decode(value, depth=0):
     if depth > MAX_DEPTH:
-        raise ValueError('SDK parameters exceed structured-value depth')
+        raise ValueError("SDK parameters exceed structured-value depth")
     if isinstance(value, list):
         return [decode(part, depth + 1) for part in value]
     if not isinstance(value, dict):
         if isinstance(value, float) and not math.isfinite(value):
-            raise ValueError('non-finite JSON number requires an explicit typed value')
+            raise ValueError("non-finite JSON number requires an explicit typed value")
         return value
-    tag = value.get('$type')
+    tag = value.get("$type")
     if tag is None:
         return {key: decode(part, depth + 1) for key, part in value.items()}
-    if tag == 'integer':
-        text = value.get('value')
+    if tag == "integer":
+        text = value.get("value")
         if not isinstance(text, str) or len(text) > 128:
-            raise ValueError('invalid typed integer')
+            raise ValueError("invalid typed integer")
         return int(text)
-    if tag == 'bytes':
-        text = value.get('base64')
+    if tag == "bytes":
+        text = value.get("base64")
         if not isinstance(text, str):
-            raise ValueError('invalid typed bytes')
+            raise ValueError("invalid typed bytes")
         return base64.b64decode(text, validate=True)
-    if tag == 'float':
-        choices = {'nan': float('nan'), 'inf': float('inf'), '-inf': -float('inf')}
-        if value.get('value') not in choices:
-            raise ValueError('invalid typed float')
-        return choices[value['value']]
-    if tag == 'timedelta':
-        values = [value.get(key, 0) for key in ('days', 'seconds', 'microseconds')]
+    if tag == "float":
+        choices = {"nan": float("nan"), "inf": float("inf"), "-inf": -float("inf")}
+        if value.get("value") not in choices:
+            raise ValueError("invalid typed float")
+        return choices[value["value"]]
+    if tag == "timedelta":
+        values = [value.get(key, 0) for key in ("days", "seconds", "microseconds")]
         if any(type(part) is not int for part in values):
-            raise ValueError('invalid typed timedelta')
+            raise ValueError("invalid typed timedelta")
         return datetime.timedelta(days=values[0], seconds=values[1], microseconds=values[2])
-    if tag in ('timestamp', 'datetime', 'date'):
-        text = value.get('value')
+    if tag in ("timestamp", "datetime", "date"):
+        text = value.get("value")
         if not isinstance(text, str) or len(text) > 128:
-            raise ValueError('invalid typed datetime')
+            raise ValueError("invalid typed datetime")
         import pandas as pd
+
         parsed = pd.Timestamp(text)
-        if tag == 'timestamp' and 'nanoseconds' in value:
-            nanos = value['nanoseconds']
+        if tag == "timestamp" and "nanoseconds" in value:
+            nanos = value["nanoseconds"]
             if not isinstance(nanos, str) or len(nanos) > 32 or int(nanos) != parsed.value:
-                raise ValueError('inconsistent typed timestamp')
+                raise ValueError("inconsistent typed timestamp")
         if parsed.nanosecond:
-            raise ValueError('native datetime parameters do not support sub-microsecond precision')
-        if tag == 'date' and (parsed.hour or parsed.minute or parsed.second or parsed.microsecond):
-            raise ValueError('typed date must not contain a time')
-        return parsed.date() if tag == 'date' else parsed.to_pydatetime()
-    if tag == 'tuple':
-        return tuple(decode(value['items'], depth + 1))
-    if tag == 'mapping':
-        pairs = value.get('entries')
-        if not isinstance(pairs, list) or any(not isinstance(p, list) or len(p) != 2 for p in pairs):
-            raise ValueError('invalid typed mapping')
+            raise ValueError("native datetime parameters do not support sub-microsecond precision")
+        if tag == "date" and (parsed.hour or parsed.minute or parsed.second or parsed.microsecond):
+            raise ValueError("typed date must not contain a time")
+        return parsed.date() if tag == "date" else parsed.to_pydatetime()
+    if tag == "tuple":
+        return tuple(decode(value["items"], depth + 1))
+    if tag == "mapping":
+        pairs = value.get("entries")
+        if not isinstance(pairs, list) or any(
+            not isinstance(p, list) or len(p) != 2 for p in pairs
+        ):
+            raise ValueError("invalid typed mapping")
         return {decode(key, depth + 1): decode(part, depth + 1) for key, part in pairs}
-    raise ValueError('unsupported SDK parameter type: ' + str(tag))
+    raise ValueError("unsupported SDK parameter type: " + str(tag))
