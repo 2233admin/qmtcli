@@ -489,7 +489,8 @@ For JSONL `server`, one input line produces one output line. Request `id` is ech
 - `capabilities` marks order placement and cancel actions as dangerous, marks `download` as
   `downloads_data` since it writes into the local QMT cache, and marks `sector` as
   `mutates_local_data` since it creates/modifies local custom sector definitions.
-- A-share order volume must be a positive multiple of 100.
+- Order volume follows the board's lot rule: 100-share multiples on the main board and ChiNext, at
+  least 200 shares on the STAR market, at least 100 shares on the Beijing Stock Exchange.
 - Order price must be positive.
 - Private `xtdata` / `XtQuantTrader` method names are blocked.
 - QMT account permissions, risk checks, and final execution remain controlled by QMT and the broker.

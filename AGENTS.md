@@ -74,7 +74,9 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - Do not auto-download, vendor, or install broker QMT.
 - Do not place real orders in tests.
 - Keep `data-call` and `trade-call` blocking `_`-prefixed methods.
-- Keep order validation: positive price and positive A-share volume multiple of 100.
+- Keep order validation: positive price, the board's lot rule (100-share multiples on the main board
+  and ChiNext, at least 200 on the STAR market, at least 100 on the Beijing Stock Exchange), and a
+  price band that fails closed when contract detail is missing.
 - Keep `server` as stdin/stdout JSONL, not TCP/HTTP.
 - `buy` / `sell` / `cancel` stay available, backed by `QMTGateway.submit_order` and `cancel_order`;
   per-order human confirmation belongs to the calling gateway (KATANA). The MCP tool surface stays

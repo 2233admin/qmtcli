@@ -606,7 +606,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "danger": "places_order",
             "inputs": {
                 "symbol": "required",
-                "volume": "positive multiple of 100",
+                "volume": "board lot",
                 "price": "positive",
             },
         },
@@ -617,7 +617,7 @@ AGENT_CAPABILITIES: dict[str, Any] = {
             "danger": "places_order",
             "inputs": {
                 "symbol": "required",
-                "volume": "positive multiple of 100",
+                "volume": "board lot",
                 "price": "positive",
             },
         },
@@ -1462,7 +1462,12 @@ def build_parser() -> argparse.ArgumentParser:
         "not that the broker accepted it; check 'qmtcli account orders' for the outcome.",
     )
     buy.add_argument("symbol", help="Symbol such as 600519.SH")
-    buy.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
+    buy.add_argument(
+        "volume",
+        type=int,
+        help="board lot; 100 on the main board and ChiNext, 200+ on the STAR market, "
+        "100+ on the Beijing Stock Exchange",
+    )
     buy.add_argument("price", type=float, help="Limit price; must be positive")
     buy.add_argument(
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
@@ -1486,7 +1491,12 @@ def build_parser() -> argparse.ArgumentParser:
         "not that the broker accepted it; check 'qmtcli account orders' for the outcome.",
     )
     sell.add_argument("symbol", help="Symbol such as 600519.SH")
-    sell.add_argument("volume", type=int, help="A-share volume; must be a positive multiple of 100")
+    sell.add_argument(
+        "volume",
+        type=int,
+        help="board lot; 100 on the main board and ChiNext, 200+ on the STAR market, "
+        "100+ on the Beijing Stock Exchange",
+    )
     sell.add_argument("price", type=float, help="Limit price; must be positive")
     sell.add_argument(
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"

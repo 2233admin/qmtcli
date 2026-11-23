@@ -74,9 +74,11 @@ DETAIL = {
 }
 
 
-def _guard(server, *, detail=DETAIL, price=396.24, volume=100, price_type=11, cap=0):
+def _guard(
+    server, *, detail=DETAIL, price=396.24, volume=100, price_type=11, cap=0, stock="300308.SZ"
+):
     server._SDK_CONFIG = {"max_order_amount": cap}
-    server._order_guard(_Handler(detail), "300308.SZ", price, volume, price_type)
+    server._order_guard(_Handler(detail), stock, price, volume, price_type)
 
 
 def test_a_price_above_the_upper_limit_is_rejected(server):
@@ -112,12 +114,46 @@ def test_a_valid_limit_order_passes(server):
     _guard(server)
 
 
-def test_a_missing_contract_detail_degrades_to_the_cap_check(server):
-    _guard(server, detail=None)
+def test_a_missing_contract_detail_refuses_the_order(server):
+    with pytest.raises(ValueError, match="contract detail"):
+        _guard(server, detail=None)
 
 
 def test_the_cap_is_off_when_it_is_zero(server):
     _guard(server, price=396.24, volume=100000, cap=0)
+
+
+def test_a_star_market_order_below_200_shares_is_rejected(server):
+    with pytest.raises(ValueError, match="at least 200 shares"):
+        _guard(server, stock="688001.SH", volume=150)
+
+
+def test_a_star_market_order_accepts_one_share_above_the_minimum(server):
+    _guard(server, stock="688001.SH", volume=201)
+
+
+def test_a_beijing_order_accepts_one_share_steps(server):
+    _guard(server, stock="430001.BJ", volume=150)
+
+
+def test_a_beijing_order_below_100_shares_is_rejected(server):
+    with pytest.raises(ValueError, match="at least 100 shares"):
+        _guard(server, stock="430001.BJ", volume=50)
+
+
+def test_a_main_board_order_off_the_lot_size_is_rejected(server):
+    with pytest.raises(ValueError, match="multiple of 100"):
+        _guard(server, stock="600519.SH", volume=150)
+
+
+def test_a_contract_detail_without_a_price_band_refuses(server):
+    with pytest.raises(ValueError, match="no price band"):
+        _guard(server, detail={"PriceTick": 0.01})
+
+
+def test_a_contract_detail_without_a_tick_refuses(server):
+    with pytest.raises(ValueError, match="no tick size"):
+        _guard(server, detail={"UpStopPrice": 471.84, "DownStopPrice": 314.56})
 
 
 class _FakeOrder:

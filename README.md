@@ -490,7 +490,7 @@ xtdatacenter 调用上。`qmtcli doctor` 会用 `xtdc_available` 字段报告 `x
 - 不自动重试下单。
 - `capabilities` 会标记下单和撤单能力为危险动作；`download` 因为写入本地 QMT 缓存，被标记为
   `downloads_data`；`sector` 因为创建/修改本地自定义板块，被标记为 `mutates_local_data`。
-- A 股委托数量必须是正的 100 倍数。
+- 委托数量按板块手数规则：主板和创业板 100 股整数倍，科创板不低于 200 股，北交所不低于 100 股。
 - 委托价格必须大于 0。
 - 阻止调用 `_` 开头的 `xtdata` / `XtQuantTrader` 方法。
 - 账户权限、风控检查和最终成交仍由 QMT 和券商控制。

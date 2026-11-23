@@ -7,12 +7,17 @@ begin.
 
 ## Unreleased
 
+- Per-market lot rule in the bridge guard: 100-share multiples on the main board and ChiNext,
+  at least 200 shares in one-share steps on the STAR market, and at least 100 shares in one-share
+  steps on the Beijing Stock Exchange. A missing contract detail now refuses the order instead of
+  degrading to the amount cap.
+
 - `qmtcli doctor --accept` runs the read-only acceptance probes against the strategy bridge: the
   health build digest, asset, orders, and four dry-run orders (price band, lot size and amount cap
   must be refused locally, a valid order must pass dry-run). It never calls `passorder`, and it
   exits 1 when any row fails, so a strategy process running an older build shows up as a failed
   `bridge` row instead of a green deployment.
-- Order safety: dedicated `/api/order/buy` and `/api/order/sell` endpoints accept only `prType=11` (limit orders). Validation order: price band (upper/lower limit, tick grid) → amount cap (`max_order_amount`) → contract detail (fail closed if missing). Dry-run executes all validation but does not call `passorder` or reserve an idempotency key. Server-side idempotency: `user_order_id` is the reservation key, bound to full order intent (stock, price, volume, prType, direction). Same key + same terms → HTTP 200 `duplicate`. Same key + different terms → HTTP 409 `conflict`. Unknown outcome (`passorder` exception/timeout) returns HTTP 502 `outcome_unknown` with `retry_safe: false`, reservation stays reserved for process lifetime. Generic `/api/call` rejects `passorder`, `algo_passorder`, `smart_algo_passorder` and backtest order functions with HTTP 403. Trades use `DEAL` datatype (not `TRADE`), include `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount`, `direction`. Bootstrap adds `dry_run` and `max_order_amount` to `connection.json` if missing. Client `place_order` no longer pre-checks orders; server handles idempotency.
+- Order safety: dedicated `/api/order/buy` and `/api/order/sell` endpoints accept only `prType=11` (limit orders). Validation order: amount cap (`max_order_amount`) → board lot rule → price band (upper/lower limit, tick grid), which fails closed when contract detail is missing. Dry-run executes all validation but does not call `passorder` or reserve an idempotency key. Server-side idempotency: `user_order_id` is the reservation key, bound to full order intent (stock, price, volume, prType, direction). Same key + same terms → HTTP 200 `duplicate`. Same key + different terms → HTTP 409 `conflict`. Unknown outcome (`passorder` exception/timeout) returns HTTP 502 `outcome_unknown` with `retry_safe: false`, reservation stays reserved for process lifetime. Generic `/api/call` rejects `passorder`, `algo_passorder`, `smart_algo_passorder` and backtest order functions with HTTP 403. Trades use `DEAL` datatype (not `TRADE`), include `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount`, `direction`. Bootstrap adds `dry_run` and `max_order_amount` to `connection.json` if missing. Client `place_order` no longer pre-checks orders; server handles idempotency.
 
 - Order read-back: after `passorder` returns, the bridge queries the account order book for the row
   carrying `user_order_id` (three attempts, 0.2 s apart). A 202 `submitted` now means the order is

@@ -708,32 +708,65 @@ def _order_intent(body):
     return stock, price, volume, price_type, user_order_id
 
 
-def _order_guard(handler, stock, price, volume, price_type):
-    """Reject an order this host's cap or the exchange's price band would refuse.
+# Board lot rules: (code prefix, market name, minimum shares, step).
+# 主板 and 创业板 trade in 100-share lots; the STAR market starts at 200 shares and
+# the Beijing Stock Exchange at 100, both in one-share steps above the minimum.
+_LOT_RULES = (
+    ("688", "STAR market", 200, 1),
+    ("689", "STAR market", 200, 1),
+    ("43", "Beijing Stock Exchange", 100, 1),
+    ("83", "Beijing Stock Exchange", 100, 1),
+    ("87", "Beijing Stock Exchange", 100, 1),
+    ("88", "Beijing Stock Exchange", 100, 1),
+    ("92", "Beijing Stock Exchange", 100, 1),
+)
 
-    Runs before passorder, so a fat-fingered price or size fails locally with a
-    reason instead of coming back as a broker rejection on an order that already
-    exists. A missing contract detail degrades to the cap-only check.
+
+def _lot_rule(stock):
+    """Return (market, minimum, step) for a six-digit stock code."""
+    code = stock[:3]
+    for prefix, market, minimum, step in _LOT_RULES:
+        if code.startswith(prefix):
+            return market, minimum, step
+    return "A-share", 100, 100
+
+
+def _order_guard(handler, stock, price, volume, price_type):
+    """Reject an order this host's cap, the board's lot rule or the exchange's band would refuse.
+
+    Runs before passorder, so a fat-fingered price or size fails locally with a reason
+    instead of coming back as a broker rejection on an order that already exists. A
+    missing contract detail refuses the order: without the band there is no local check
+    left, and the broker would be the one to reject it.
     """
     cap = float((_SDK_CONFIG or {}).get("max_order_amount") or 0)
     if cap and price * volume > cap:
         raise ValueError("order amount %.2f exceeds max_order_amount %.2f" % (price * volume, cap))
-    if volume % 100 != 0:
+    market, minimum, step = _lot_rule(stock)
+    if volume < minimum or (volume - minimum) % step:
+        if step == 1:
+            raise ValueError("%s order volume must be at least %d shares" % (market, minimum))
         raise ValueError("A-share order volume must be a positive multiple of 100")
+    if price_type != 11:
+        return
     reader = getattr(handler._ctx(), "get_instrument_detail", None)
-    if price_type != 11 or not callable(reader):
-        return
-    info = reader(stock) or {}
-    if not isinstance(info, dict):
-        return
+    if not callable(reader):
+        raise ValueError("contract detail is unavailable, refusing to price-check the order")
+    info = reader(stock)
+    if not isinstance(info, dict) or not info:
+        raise ValueError("contract detail for %s is unavailable" % stock)
     upper = _safe_float(info.get("UpStopPrice"), 0.0)
     lower = _safe_float(info.get("DownStopPrice"), 0.0)
     tick = _safe_float(info.get("PriceTick"), 0.0)
-    if upper and price > upper:
+    if not upper or not lower:
+        raise ValueError("contract detail for %s carries no price band" % stock)
+    if not tick:
+        raise ValueError("contract detail for %s carries no tick size" % stock)
+    if price > upper:
         raise ValueError("price %g is above the upper limit %g" % (price, upper))
-    if lower and price < lower:
+    if price < lower:
         raise ValueError("price %g is below the lower limit %g" % (price, lower))
-    if tick and abs(round(price / tick) * tick - price) > 1e-6:
+    if abs(round(price / tick) * tick - price) > 1e-6:
         raise ValueError("price %g is not a multiple of the tick size %g" % (price, tick))
 
 

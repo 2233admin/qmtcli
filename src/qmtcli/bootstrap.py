@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "5dbe42af9233736bd37d75f2671588c9a27600116ea7c57b18240f404833aa0f"
+BRIDGE_SHA256 = "6366e0981739d74c252e25bbc2e2311fd13259db60f8108c2091bec2b127b7bd"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
