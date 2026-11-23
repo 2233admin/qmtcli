@@ -337,6 +337,16 @@ class Service:
         for stream in streams:
             stream.retire(reason)
 
+    def encode(self, data):
+        """Encode an SDK result, naming the layer when the codec cannot."""
+        try:
+            return self.codec.encode(data)
+        except BaseException as error:
+            # The codec raises TypeError with the offending type name; without it
+            # an encoding gap is indistinguishable from a native failure.
+            raise ApiError('result_encoding_failed',
+                           'bridge cannot encode this SDK result: ' + str(error), 502) from None
+
     def capabilities(self, context):
         self.assert_owner()
         available = []
@@ -397,7 +407,7 @@ def handlers(base, stream_module=None):
                 raise ApiError('invalid_json', 'request must be bounded valid JSON') from None
 
         def success(self, data, state=None):
-            response = {'ok': True, 'data': self.application.sdk.codec.encode(data)}
+            response = {'ok': True, 'data': self.application.sdk.encode(data)}
             if state is not None:
                 response['context'] = state
             raw = json.dumps(response, ensure_ascii=False, allow_nan=False)

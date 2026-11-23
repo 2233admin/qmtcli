@@ -7,6 +7,13 @@ begin.
 
 ## Unreleased
 
+- Gave a codec failure its own bridge error. `Service.encode` now reports
+  `result_encoding_failed` with the offending type name instead of letting `daqmt_api.py` collapse it
+  into `native_call_failed`. Until now an operator could not tell "QMT refused the call" from "the
+  bridge cannot represent this result" while debugging `sdk-call`, and the two point at different
+  layers. The codec's own `TypeError` message already carries the type name, so no native text is
+  exposed beyond it.
+
 - Pinned the ruff rule set in `pyproject.toml`. `AGENTS.md` and `README.md` both tell an agent to run
   `ruff check .` as the first command, but an unpinned ruff reported 266 findings on a clean tree
   (96 in `src`/`tests`/`bridge` alone), so the command could not tell a new problem from an old one.
