@@ -61,6 +61,12 @@ select = [
     "PLR0124",  # comparison with itself
 ]
 
+[tool.ruff.format]
+# bridge/ is single-quoted and sha256-pinned: one reformatted byte breaks the digest
+# bootstrap.BRIDGE_SHA256 pins and the strategy refuses to start. Verified against the
+# editor path (`ruff format --stdin-filename`), which is how format-on-write arrives.
+exclude = ["bridge"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

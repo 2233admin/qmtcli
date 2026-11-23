@@ -31,6 +31,10 @@ Use `uv run ...` unless the package is installed into the active global Python.
 
 - `src/qmtcli/cli.py` - argparse commands, JSON RPC, JSONL stdio loop.
 - `src/qmtcli/gateway.py` - QMT path discovery, SDK import, account/data/trade wrappers.
+- `src/qmtcli/daqmt_market.py` - the read-only loopback commands `qmtcli market` and
+  `qmtcli account`. Read this before scripting against `127.0.0.1:9001`:
+  `qmtcli account orders` prints today's orders with `status` and `status_name`,
+  `qmtcli account trades` today's fills, `qmtcli account asset` the balance.
 - `src/qmtcli/mcp_server.py` - stdio MCP server; tools generated from `AGENT_CAPABILITIES`,
   dispatched through `_handle_rpc_request`. Requires the optional `mcp` extra.
 - `tests/` - fake `xtquant` modules; tests must not require real QMT.
@@ -54,6 +58,9 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - After changing `bridge/`, run `python scripts/check_bridge_copies.py <qmt_root>`. `pytest` imports
   this checkout and stays green while the client runs old bytes, so only this check shows that the
   change reached the client.
+- `bridge/` is excluded from `ruff format` (`[tool.ruff.format]` in `pyproject.toml`)
+  because those files are single-quoted and sha256-pinned. `ruff check` still lints
+  them; only the formatter steps back.
 
 ## Safety Boundaries
 
@@ -74,6 +81,8 @@ Use `uv run ...` unless the package is installed into the active global Python.
 
 ## Common Agent Tasks
 
+- To read the live bridge, use `qmtcli account` (Code Map) instead of a hand-rolled
+  request carrying the secret from `connection.json`.
 - For CLI behavior, add or update a small test in `tests/` first.
 - For docs/examples, keep examples parseable and runnable through `qmtcli rpc` or `qmtcli server`.
 - For QMT SDK behavior, fake `xtquant` with `types.ModuleType` in tests instead of importing broker SDK.
