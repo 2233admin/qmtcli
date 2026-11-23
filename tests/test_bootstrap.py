@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 
 from qmtcli import bootstrap
 
@@ -170,3 +171,9 @@ def test_retargeting_assets_leaves_the_secret_alone(tmp_path, monkeypatch):
 
     config = json.loads((host / "daqmt" / "connection.json").read_text(encoding="utf-8"))
     assert config["secret"] == "s3cr3t"
+
+
+def test_the_bridge_pin_matches_the_shipped_server():
+    """BRIDGE_SHA256 is a hand-kept copy of the file's digest; a stale one reports a good tree as broken."""
+    shipped = Path(__file__).resolve().parents[1] / "bridge" / "daqmt_server.py"
+    assert bootstrap._sha256(shipped) == bootstrap.BRIDGE_SHA256

@@ -44,6 +44,16 @@ Use `uv run ...` unless the package is installed into the active global Python.
   market data, and the probe that tells a stopped bridge from a missing secret.
 - `scripts/check_mcp_tree.py` - fails when the MCP server serves a different checkout than this
   one, or one with a different command surface.
+- `scripts/check_bridge_copies.py` - the same check for the bridge: fails when the strategy file or
+  the deployed assets are not this checkout's bytes.
+
+## Tool Notes
+
+- A `read` result is immediately editable: copy its `[FILE#TAG]` into `edit`. Re-read only after an
+  edit or an external change, never as a precondition for each edit.
+- After changing `bridge/`, run `python scripts/check_bridge_copies.py <qmt_root>`. `pytest` imports
+  this checkout and stays green while the client runs old bytes, so only this check shows that the
+  change reached the client.
 
 ## Safety Boundaries
 
