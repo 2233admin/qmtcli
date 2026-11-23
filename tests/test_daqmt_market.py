@@ -60,10 +60,12 @@ def captured(monkeypatch):
     return calls
 
 
-def test_sector_list_reads_the_root_groups(tmp_path):
+def test_sector_list_reads_the_root_groups(tmp_path, monkeypatch):
     host = _write_connection(tmp_path)
-    daqmt_market.urllib.request.urlopen = lambda request, timeout=None: _Response(
-        {"ok": True, "data": [[], ["我的", "沪深板块"]]}
+    monkeypatch.setattr(
+        daqmt_market.urllib.request,
+        "urlopen",
+        lambda request, timeout=None: _Response({"ok": True, "data": [[], ["我的", "沪深板块"]]}),
     )
 
     assert daqmt_market.sector_list("", host_dir=str(host)) == ["我的", "沪深板块"]
@@ -102,6 +104,11 @@ def test_the_secret_travels_in_a_header_and_never_in_the_body(tmp_path, captured
 
     daqmt_market.instrument_detail("600000.SH", host_dir=str(host))
 
+    sent = dict(captured[0].header_items())
+    assert sent["X-bridge-secret"] == "s3cr3t-never-print"
+    assert sent["X-bridge-account"] == "603010000249"
+    assert b"s3cr3t-never-print" not in captured[0].data
+
 
 def test_a_bridge_refusal_is_not_reported_as_empty_data(tmp_path, monkeypatch):
     host = _write_connection(tmp_path)
@@ -132,3 +139,52 @@ def test_a_native_failure_raises_instead_of_returning_empty(tmp_path, monkeypatc
 def test_a_missing_connection_file_names_the_fix(tmp_path):
     with pytest.raises(daqmt_market.BridgeError, match="qmtcli-rs setup"):
         daqmt_market.sector_list("", host_dir=str(tmp_path))
+
+
+def test_account_asset_uses_the_fixed_get_endpoint(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.account_asset(host_dir=str(host))
+
+    assert captured[0].full_url.endswith("/api/account/asset")
+    assert captured[0].get_method() == "GET"
+
+
+def test_positions_reads_the_holding_endpoint(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.positions(host_dir=str(host))
+
+    assert captured[0].full_url.endswith("/api/holding")
+
+
+def test_orders_sends_the_cancelable_flag_only_when_asked(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.orders(host_dir=str(host))
+    daqmt_market.orders(cancelable_only=True, host_dir=str(host))
+
+    assert captured[0].full_url.endswith("/api/order/status?cancelable_only=false")
+    assert captured[1].full_url.endswith("/api/order/status?cancelable_only=true")
+
+
+def test_account_get_carries_the_bridge_account_header(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.trades(host_dir=str(host))
+
+    sent = dict(captured[0].header_items())
+    assert sent["X-bridge-account"] == "603010000249"
+    assert sent["X-bridge-secret"] == "s3cr3t-never-print"
+
+
+def test_an_http_refusal_on_an_account_endpoint_raises(tmp_path, monkeypatch):
+    host = _write_connection(tmp_path)
+
+    def refuse(request, timeout=None):
+        raise daqmt_market.urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(daqmt_market.urllib.request, "urlopen", refuse)
+
+    with pytest.raises(daqmt_market.BridgeError, match="unreachable"):
+        daqmt_market.positions(host_dir=str(host))

@@ -1494,6 +1494,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)",
     )
     market.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
+    account = subparsers.add_parser(
+        "account",
+        help="read the bound account through the strategy bridge inside full QMT",
+        description=(
+            "Read-only account data through the strategy bridge that runs inside the full QMT\n"
+            "client (bridge/daqmt_server.py), on its fixed GET endpoints. Unlike 'asset',\n"
+            "'positions', 'orders' and 'trades', this path does not import xtquant and needs no\n"
+            "--account: the bridge is already bound to one account at strategy start and rejects\n"
+            "a mismatch.\n\n"
+            "Examples:\n"
+            "  qmtcli account asset\n"
+            "  qmtcli account positions\n"
+            "  qmtcli account orders --cancelable-only\n"
+            "  qmtcli account trades"
+        ),
+    )
+    account_sub = account.add_subparsers(dest="account_command", required=True)
+    account_sub.add_parser("asset", help="cash and total asset for the bound account")
+    account_sub.add_parser("positions", help="holdings keyed by CODE.MARKET")
+    account_orders = account_sub.add_parser("orders", help="today's orders")
+    account_orders.add_argument(
+        "--cancelable-only",
+        action="store_true",
+        help="ask the bridge to keep only orders the native can_cancel_order accepts",
+    )
+    account_sub.add_parser("trades", help="today's fills")
+    account.add_argument(
+        "--host-dir",
+        default="",
+        help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)",
+    )
+    account.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
 
     subparsers.add_parser(
         "rpc",
@@ -1616,6 +1648,8 @@ def _run_command(args: argparse.Namespace) -> int:
         return 0 if result["ok"] else 1
     if args.command == "market":
         return _handle_market_command(args)
+    if args.command == "account":
+        return _handle_account_command(args)
     if args.command == "fields":
         _print_json(_dispatch_fields_command(args.kind))
         return 0
@@ -2492,6 +2526,31 @@ def _handle_market_command(args: argparse.Namespace) -> int:
             _print_json(
                 {"ok": True, "data": daqmt_market.instrument_detail(args.symbol, **options)}
             )
+    except daqmt_market.BridgeError as exc:
+        _print_json({"ok": False, "error": str(exc)})
+        return 1
+    return 0
+
+
+def _handle_account_command(args: argparse.Namespace) -> int:
+    """Read the bridge-bound account on its fixed GET endpoints (no xtquant)."""
+    from qmtcli import daqmt_market
+
+    options = {"host_dir": args.host_dir or None, "timeout": args.timeout}
+    try:
+        if args.account_command == "asset":
+            _print_json({"ok": True, "data": daqmt_market.account_asset(**options)})
+        elif args.account_command == "positions":
+            _print_json({"ok": True, "data": daqmt_market.positions(**options)})
+        elif args.account_command == "orders":
+            _print_json(
+                {
+                    "ok": True,
+                    "data": daqmt_market.orders(cancelable_only=args.cancelable_only, **options),
+                }
+            )
+        else:
+            _print_json({"ok": True, "data": daqmt_market.trades(**options)})
     except daqmt_market.BridgeError as exc:
         _print_json({"ok": False, "error": str(exc)})
         return 1

@@ -76,14 +76,7 @@ def call(
     ``BridgeError`` rather than returning an empty result, because an empty
     result here means "the market had no such record", not "the call failed".
     """
-    config = _load_connection(host_dir)
-    endpoint = str(config.get("endpoint") or "").rstrip("/")
-    secret = str(config.get("secret") or "")
-    if not endpoint:
-        raise BridgeError("bridge connection file has no endpoint")
-    if not secret:
-        raise BridgeError("bridge connection file has no secret")
-
+    endpoint, secret, account = _resolve(_load_connection(host_dir))
     body = json.dumps({"api": api, "params": params or {}}).encode("utf-8")
     request = urllib.request.Request(
         f"{endpoint}/api/call",
@@ -95,7 +88,7 @@ def call(
             # The bridge binds the call to the account it was started with
             # (daqmt_api.py:199-202); sending it lets a mismatch fail as 403
             # instead of as an opaque native error.
-            "X-Bridge-Account": str(config.get("account") or ""),
+            "X-Bridge-Account": account,
         },
     )
     try:
@@ -116,6 +109,45 @@ def call(
         error = payload.get("error") if isinstance(payload, dict) else None
         raise BridgeError(f"bridge call to {api} failed: {error or payload}")
     return payload.get("data")
+
+
+def _resolve(config: dict[str, Any]) -> tuple[str, str, str]:
+    """Endpoint, secret and account from a loaded connection file."""
+    endpoint = str(config.get("endpoint") or "").rstrip("/")
+    secret = str(config.get("secret") or "")
+    if not endpoint:
+        raise BridgeError("bridge connection file has no endpoint")
+    if not secret:
+        raise BridgeError("bridge connection file has no secret")
+    return endpoint, secret, str(config.get("account") or "")
+
+
+def get(path: str, *, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> Any:
+    """GET one bridge endpoint that is not the generic ``/api/call`` route.
+
+    The account endpoints answer fixed shapes built by the bridge's own
+    converters (``_position_to_dict`` and friends in ``daqmt_server.py``). They
+    do not go through the generic codec, which is why ``/api/holding`` returns
+    holdings where ``sdk-call global.get_trade_detail_data POSITION`` fails.
+    """
+    endpoint, secret, account = _resolve(_load_connection(host_dir))
+    request = urllib.request.Request(
+        f"{endpoint}{path}",
+        headers={"X-Bridge-Secret": secret, "X-Bridge-Account": account},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise BridgeError(f"bridge refused {path}: HTTP {exc.code} {detail}") from None
+    except urllib.error.URLError as exc:
+        raise BridgeError(
+            f"bridge unreachable at {endpoint}: {exc.reason}. "
+            "Is the strategy running inside the QMT client?"
+        ) from None
+    except (OSError, ValueError) as exc:
+        raise BridgeError(f"bridge GET {path} failed: {exc}") from None
 
 
 def sector_list(
@@ -157,3 +189,33 @@ def instrument_detail(
         host_dir=host_dir,
         timeout=timeout,
     )
+
+
+def account_asset(
+    *, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """Cash and total asset for the bridge's bound account (GET /api/account/asset)."""
+    return get("/api/account/asset", host_dir=host_dir, timeout=timeout)
+
+
+def positions(*, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Holdings keyed by ``CODE.MARKET`` (GET /api/holding)."""
+    return get("/api/holding", host_dir=host_dir, timeout=timeout)
+
+
+def orders(
+    *, cancelable_only: bool = False, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """Today's orders (GET /api/order/status).
+
+    ``cancelable_only`` asks the bridge to filter through the native
+    ``can_cancel_order``; the bridge answers 503 when the client does not expose
+    it, which surfaces here as a BridgeError rather than a silently wider list.
+    """
+    flag = "true" if cancelable_only else "false"
+    return get(f"/api/order/status?cancelable_only={flag}", host_dir=host_dir, timeout=timeout)
+
+
+def trades(*, host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Today's fills (GET /api/trade/status)."""
+    return get("/api/trade/status", host_dir=host_dir, timeout=timeout)

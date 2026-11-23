@@ -14,6 +14,13 @@ begin.
   from "the bridge did not answer". Verified live against `127.0.0.1:9001`: root and nested sector
   expansion, 5000+ code sector lists, and contract details for `600000.SH` / `000001.SZ`.
 
+- Added `qmtcli account asset|positions|orders|trades`, the bound account read on the bridge's
+  fixed GET endpoints. It needs no `--account`: the strategy is bound to one account at start and
+  the bridge rejects a mismatch. This is the path that works where the generic `sdk-call` route
+  fails, because the bridge's own converters build these shapes instead of the codec, which only
+  reads `m_`-prefixed fields. Verified live: cash 10212625.85, total asset 13699622.85, 11
+  holdings, and empty orders/trades on a day with no orders.
+
 - Added `scripts/bridge_scan.py`, the same four-rule trend screen ported off the frozen TDX feed
   onto bridge bars: one full-market tick call plus 26 daily bars in 300-symbol chunks, ranked by
   percentile. The report names its own data date from the tick timetag, so a stale feed shows up
