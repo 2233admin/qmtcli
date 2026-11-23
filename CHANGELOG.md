@@ -9,6 +9,14 @@ begin.
 
 - Order safety: dedicated `/api/order/buy` and `/api/order/sell` endpoints accept only `prType=11` (limit orders). Validation order: price band (upper/lower limit, tick grid) → amount cap (`max_order_amount`) → contract detail (fail closed if missing). Dry-run executes all validation but does not call `passorder` or reserve an idempotency key. Server-side idempotency: `user_order_id` is the reservation key, bound to full order intent (stock, price, volume, prType, direction). Same key + same terms → HTTP 200 `duplicate`. Same key + different terms → HTTP 409 `conflict`. Unknown outcome (`passorder` exception/timeout) returns HTTP 502 `outcome_unknown` with `retry_safe: false`, reservation stays reserved for process lifetime. Generic `/api/call` rejects `passorder`, `algo_passorder`, `smart_algo_passorder` and backtest order functions with HTTP 403. Trades use `DEAL` datatype (not `TRADE`), include `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount`, `direction`. Bootstrap adds `dry_run` and `max_order_amount` to `connection.json` if missing. Client `place_order` no longer pre-checks orders; server handles idempotency.
 
+- Order read-back: after `passorder` returns, the bridge queries the account order book for the row
+  carrying `user_order_id` (three attempts, 0.2 s apart). A 202 `submitted` now means the order is
+  actually in the book and carries `order_id` plus `broker_accepted: true`. When no row appears the
+  answer is 502 `unknown` with `retry_safe: false`, the reservation becomes `outcome_unknown`, and a
+  retry with the same key returns 409 instead of a false `duplicate`. This covers the case observed
+  live on 2026-11-23: `passorder` returned without error on a client whose trade channel was not
+  ready after a restart, and no order reached the book or the broker.
+
 - `qmtcli buy`, `sell` and `cancel` now go through the strategy bridge, the same way `qmtcli account`
   reads do. They used to call `XtQuantTrader.order_stock` in-process, which is the route that cannot
   connect to full QMT (the -1/-12 failure). The bridge already exposed `POST /api/order/buy|sell` and

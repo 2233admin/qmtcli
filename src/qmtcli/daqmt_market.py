@@ -268,8 +268,11 @@ def place_order(
 ) -> Any:
     """Submit one limit order (POST /api/order/buy|sell).
 
-    A 202 ``submitted`` means ``passorder`` returned, not that the broker
-    accepted the order. Read ``orders()`` for the outcome.
+    A 202 ``submitted`` means the bridge read the order back from the account's
+    order book and found it under ``user_order_id``; the reply carries
+    ``order_id`` and ``broker_accepted: true``. A 502 ``unknown`` means
+    ``passorder`` returned but no order appeared, so the outcome is unknown and
+    the key must not be reused without reconciling ``orders()`` first.
 
     ``user_order_id`` makes a retry safe within one bridge process: the bridge
     copies it into the order's ``m_strRemark`` and answers 409 when the key is

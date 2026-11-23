@@ -50,6 +50,6 @@ _Avoid_: idempotency key, user_order_id, 委托编号
 _Avoid_: 测试模式, 模拟下单
 
 **未知结果**:
-`passorder` 调用超时或异常，无法确定券商是否接受。返回 `outcome_unknown`，禁止自动重试，必须查询订单和成交。
+`passorder` 调用超时、异常，或者调用返回但委托簿里找不到这笔委托，无法确定券商是否接受。返回 `unknown` 并禁止自动重试，必须查询订单和成交后再决定。同一幂等键再次提交返回 409，不会返回重复。
 _Avoid_: 失败, 错误, unknown
 _Avoid_: 订单, order, 报单

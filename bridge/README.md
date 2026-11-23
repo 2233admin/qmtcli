@@ -89,6 +89,8 @@ Dry-run (`"dry_run": true` in body or `dry_run: true` in `connection.json`) exec
 
 Server-side idempotency: `user_order_id` is the reservation key. The bridge reserves it before validation, binds it to the full order intent (stock, price, volume, prType, direction), and uses it to detect duplicates. Same key + same terms → HTTP 200 `duplicate`. Same key + different terms → HTTP 409 `conflict`. Reservation is process-local; restart loses it but orders remain queryable by `orders()`.
 
-Unknown outcome: `passorder` exception or timeout returns HTTP 502 `outcome_unknown` with `retry_safe: false`. The reservation stays reserved for the bridge process lifetime. Do not auto-retry; query orders and deals first.
+After `passorder` returns, the bridge reads the order book back and looks for the row carrying `user_order_id` (three attempts, 0.2 s apart). Only then does it answer HTTP 202 `submitted`, with `order_id` and `broker_accepted: true`. This catches the case where QMT accepts the call and creates nothing: observed on a client whose trade channel was not ready after a restart, where `passorder` returned 0 and no order reached the book.
+
+Unknown outcome: `passorder` exception, timeout, or a return with no matching row in the order book answers HTTP 502 `unknown` with `retry_safe: false`. The reservation moves to `outcome_unknown` and a later call with that key answers HTTP 409, never a duplicate. Do not auto-retry; query orders and deals first.
 
 Trades use `DEAL` datatype (not `TRADE`). Each deal includes `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount` and `direction`.

@@ -114,6 +114,23 @@ def test_the_cap_is_off_when_it_is_zero(server):
     _guard(server, price=396.24, volume=100000, cap=0)
 
 
+class _FakeOrder:
+    """The fields _order_to_dict reads, so a read-back can succeed outside QMT."""
+
+    def __init__(self, user_order_id):
+        self.m_strOrderSysID = "143327"
+        self.m_strRemark = user_order_id
+        self.m_strInstrumentID = "300308"
+        self.m_strExchangeID = "SZ"
+        self.m_dLimitPrice = 396.24
+        self.m_nVolumeTotalOriginal = 100
+        self.m_nVolumeTraded = 0
+        self.m_nVolumeTotal = 100
+        self.m_nOrderStatus = 54
+        self.m_strInsertDateTime = ""
+        self.m_nOffsetFlag = 48
+
+
 class _OrderRoute:
     """A buy handler with its JSON body, so the route can be driven without tornado."""
 
@@ -134,10 +151,17 @@ class _OrderRoute:
         self.replies.append((status, payload))
 
 
-def _route(server, body, **kwargs):
-    route = _OrderRoute(body, **kwargs)
+def _route(server, body, *, dry_run=False, accepted=True):
+    route = _OrderRoute(body, dry_run=dry_run)
     server._SDK_CONFIG = {"max_order_amount": 0}
-    server._PlaceOrderMixin._do_order(route)
+    key = body.get("user_order_id") or ""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            server,
+            "_query_orders",
+            lambda accountID, account_type: [_FakeOrder(key)] if key and accepted else [],
+        )
+        server._PlaceOrderMixin._do_order(route)
     return route
 
 
@@ -185,7 +209,10 @@ def test_a_resubmitted_key_answers_duplicate_without_passorder(server, monkeypat
     server._ORDER_RESERVATIONS.clear()
     body = {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "abc123"}
 
-    assert _route(server, body).replies[0][1]["status"] == "submitted"
+    first = _route(server, body)
+    assert first.replies[0][1]["status"] == "submitted"
+    assert first.replies[0][1]["broker_accepted"] is True
+    assert first.replies[0][1]["order_id"] == "143327"
     second = _route(server, body)
 
     assert second.replies == [
@@ -213,3 +240,28 @@ def test_a_reused_key_with_other_terms_answers_conflict(server, monkeypatch):
 
     assert changed.replies[0][0] == 409
     assert changed.replies[0][1]["status"] == "conflict"
+
+
+def test_an_order_the_broker_never_accepted_answers_unknown(server, monkeypatch):
+    monkeypatch.setattr(server, "passorder", lambda *args: 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+    body = {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "ghost1"}
+
+    route = _route(server, body, accepted=False)
+
+    assert route.replies[0][0] == 502
+    assert route.replies[0][1]["status"] == "unknown"
+    assert route.replies[0][1]["retry_safe"] is False
+    assert server._ORDER_RESERVATIONS["ghost1"]["status"] == "outcome_unknown"
+
+
+def test_an_unknown_outcome_is_not_reported_as_a_duplicate(server, monkeypatch):
+    monkeypatch.setattr(server, "passorder", lambda *args: 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+    body = {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "ghost2"}
+
+    _route(server, body, accepted=False)
+    retry = _route(server, body, accepted=False)
+
+    assert retry.replies[0][0] == 409
+    assert retry.replies[0][1]["status"] == "unknown"

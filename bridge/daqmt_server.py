@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 
@@ -291,6 +292,32 @@ def _query_trades(accountID, account_type):
     # 'DEAL', not 'TRADE': the documented strDatatype values are ACCOUNT, POSITION,
     # POSITION_STATISTICS, ORDER, DEAL, TASK (catalog.json:7071). 'trade' returned [].
     return globals()['get_trade_detail_data'](accountID, account_type, 'deal') or []
+
+def _confirm_order(accountID, account_type, user_order_id, attempts=3):
+    """Return the order-book row carrying this idempotency key, or None.
+
+    QMT can accept a passorder call and still create nothing: observed when the
+    client's trade channel was not ready after a restart, where passorder
+    returned 0 and no order reached the book. Without this read-back a 202 would
+    look like success. The sleep blocks the loop briefly, but an accepted order
+    lands in the local book within milliseconds and this runs once per order.
+    """
+    for attempt in range(attempts):
+        try:
+            rows = _query_orders(accountID, account_type)
+        except Exception:
+            logger.exception('order read-back failed for %s', user_order_id)
+            return None
+        for row in rows:
+            try:
+                record = _order_to_dict(row)
+            except Exception:
+                continue
+            if record['user_order_id'] == user_order_id:
+                return record
+        if attempt + 1 < attempts:
+            time.sleep(0.2)
+    return None
 
 
 def _trade_to_dict(t) -> dict:
@@ -570,6 +597,15 @@ class _PlaceOrderMixin(object):
             with _RESERVATION_LOCK:
                 reserved = _ORDER_RESERVATIONS.get(user_order_id)
                 if reserved is not None:
+                    if reserved['status'] == 'outcome_unknown':
+                        self.write_json({
+                            'status': 'unknown',
+                            'user_order_id': user_order_id,
+                            'message': 'a previous attempt with this user_order_id ended with an '
+                                       'unknown outcome; reconcile the account before reusing it',
+                            'broker_accepted': None, 'retry_safe': False,
+                        }, status=409)
+                        return
                     same = reserved['intent'] == intent
                     self.write_json({
                         'status': 'duplicate' if same else 'conflict',
@@ -610,11 +646,23 @@ class _PlaceOrderMixin(object):
                 'user_order_id': user_order_id, 'broker_accepted': None, 'retry_safe': False,
             }, status=502)
             return
+        record = _confirm_order(self._account(), _account_type('stock'), user_order_id)
         with _RESERVATION_LOCK:
             if user_order_id in _ORDER_RESERVATIONS:
-                _ORDER_RESERVATIONS[user_order_id]['status'] = 'submitted'
+                _ORDER_RESERVATIONS[user_order_id]['status'] = (
+                    'submitted' if record else 'outcome_unknown')
+        if record is None:
+            logger.warning('passorder returned but no order carries user_order_id %s',
+                           user_order_id)
+            self.write_json({
+                'status': 'unknown',
+                'message': 'passorder returned but the order is not in the account order book',
+                'user_order_id': user_order_id, 'broker_accepted': None, 'retry_safe': False,
+            }, status=502)
+            return
         self.write_json({
-            'status': 'submitted', 'user_order_id': user_order_id, 'broker_accepted': None,
+            'status': 'submitted', 'user_order_id': user_order_id,
+            'broker_accepted': True, 'order_id': record['order_id'],
         }, status=202)
 
 
