@@ -7,6 +7,13 @@ begin.
 
 ## Unreleased
 
+- Fixed the codec crash on native types that expose `__name__` but not `__module__`. `_encode` read
+  `type(value).__module__` unguarded, so such a metaclass raised `AttributeError` and the whole call
+  failed. The new `result_encoding_failed` code named the missing attribute (`__module__`) but not the
+  layer; `getattr(type(value), '__module__', '')` now matches how the codec already degrades on
+  unreadable fields. The module string only picks the pandas and numpy branches, so an empty value
+  just skips them.
+
 - Gave a codec failure its own bridge error. `Service.encode` now reports
   `result_encoding_failed` with the offending type name instead of letting `daqmt_api.py` collapse it
   into `native_call_failed`. Until now an operator could not tell "QMT refused the call" from "the

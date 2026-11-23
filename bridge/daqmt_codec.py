@@ -23,7 +23,9 @@ def _encode(value, state, depth):
     if value is None or isinstance(value, (str, bool)):
         return value
     kind = type(value).__name__
-    module = type(value).__module__
+    # A native type can expose __name__ but not __module__; its metaclass raises
+    # AttributeError(name). The module only decides the pandas/numpy branches.
+    module = getattr(type(value), '__module__', '') or ''
     if kind in ('NAType', 'NaTType') and module.startswith('pandas'):
         return {'$type': 'missing', 'value': 'NA' if kind == 'NAType' else 'NaT'}
     if isinstance(value, numbers.Integral):

@@ -4,6 +4,7 @@ A Full-QMT native object exposes every ``m_`` field, and one getter can raise
 while the rest stay readable. Losing the whole result would turn a partial
 read into an empty account, so the codec marks the bad field instead.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -75,3 +76,23 @@ def test_an_object_without_native_fields_still_fails(codec):
 
     with pytest.raises(TypeError, match="unsupported SDK result type"):
         codec.encode(NoNativeFields())
+
+
+class _HideModule(type):
+    """A native metaclass can expose __name__ but refuse __module__."""
+
+    def __getattribute__(cls, name):
+        if name == "__module__":
+            raise AttributeError(name)
+        return type.__getattribute__(cls, name)
+
+
+class NativeWithoutModule(metaclass=_HideModule):
+    m_readable = 1.5
+
+
+def test_a_type_without_module_still_encodes(codec):
+    result = codec.encode(NativeWithoutModule())
+
+    assert result["$type"] == "sdk-object"
+    assert result["fields"]["m_readable"] == 1.5
