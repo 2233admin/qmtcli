@@ -1,6 +1,6 @@
 # QMT host bridge
 
-The code that runs *inside* the full QMT client, not the CLI. `src/qmtcli` talks to it over loopback HTTP; this directory is what the client loads.
+The code that runs *inside* the full QMT client, not the CLI. `src/qmtcli` talks to it over loopback HTTP.
 
 | File | Role |
 |---|---|
@@ -13,6 +13,26 @@ The code that runs *inside* the full QMT client, not the CLI. `src/qmtcli` talks
 ## Why the entry point has two names
 
 `daqmt_server.py` and the client's `D:/DFZQxtqmt_client_real_win64/python/大QMT.py` are byte-identical (`c9e0513315898306e3710805ac40dc664e9cf95b183e9b17c5e66b2d547924a6`). The installer copies one to the other; QMT loads the file under the name the operator picks. Only one copy lives here.
+
+## Which copy the client runs, and why editing this directory does nothing
+
+`connection.json` carries `resource_dir` and a sha256 for each of the five files above. At strategy start
+`daqmt_server.py:94-104` requires `resource_dir` to be the directory that holds that `connection.json`,
+then refuses to start unless every asset there matches its pinned digest. On this host:
+
+```
+C:/Users/Administrator/AppData/Local/QmtCli/daqmt/
+```
+
+So this directory is the source of truth, not the running code. Three consequences:
+
+- Editing `bridge/daqmt_api.py` changes nothing the client loads.
+- Editing the deployed copy without updating `connection.json.assets` makes the next strategy start fail
+  with `invalid or modified bridge startup configuration`.
+- The imported modules live for the whole strategy run, so even a correct edit needs a strategy restart.
+
+`src/qmtcli/bootstrap.py --apply` copies only the entry point to `大QMT.py`; nothing in this repository
+copies the four sibling assets. Treat `resource_dir` as owned by whatever wrote `connection.json`.
 
 ## What is deliberately absent
 

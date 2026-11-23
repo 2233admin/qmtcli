@@ -39,7 +39,7 @@ def _scrub(obj: Any) -> Any:
         return [_scrub(item) for item in obj]
     if _pd is not None and (obj is _pd.NaT or obj is _pd.NA):
         return None
-    if isinstance(obj, float) and obj != obj:  # NaN is the only float unequal to itself
+    if isinstance(obj, float) and math.isnan(obj):
         return None
     return obj
 

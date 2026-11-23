@@ -32,6 +32,7 @@ def test_cli_stdout_is_utf8_even_when_stdio_defaults_to_gbk() -> None:
         capture_output=True,
         env=env,
         timeout=120,
+        check=False,  # the assertion below reports the exit code
     )
     assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
     # Both streams were reconfigured away from the GBK default.

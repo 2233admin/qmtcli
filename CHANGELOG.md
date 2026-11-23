@@ -7,6 +7,18 @@ begin.
 
 ## Unreleased
 
+- Pinned the ruff rule set in `pyproject.toml`. `AGENTS.md` and `README.md` both tell an agent to run
+  `ruff check .` as the first command, but an unpinned ruff reported 266 findings on a clean tree
+  (96 in `src`/`tests`/`bridge` alone), so the command could not tell a new problem from an old one.
+  The selection is now explicit: ruff's four core families plus `PLW1510` (subprocess without an
+  explicit `check=`), `RUF059` (unpacked but unused) and `PLR0124` (self-comparison). The ten
+  findings those extras raised are fixed rather than suppressed.
+
+- Documented which copy of the bridge the QMT client actually loads. `connection.json` pins a sha256
+  per asset and the strategy refuses to start on a mismatch, so editing `bridge/*.py` changed nothing
+  while editing the deployed copy without updating those digests would have broken the next start.
+  `bridge/README.md` and the `AGENTS.md` code map now say so.
+
 - Added `qmtcli market sectors|stocks|instrument`, read-only market data through the strategy
   bridge inside the full QMT client (`bridge/daqmt_server.py`). It does not import `xtquant`, so it
   is the one market path that still answers where `xtquant` cannot connect to full QMT. Every call

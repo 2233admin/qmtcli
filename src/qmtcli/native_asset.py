@@ -3,6 +3,7 @@
 The ringbuffer runtime is vendor C++, so native calls run only in a bounded child
 process. This module's codecs and parent adapter are usable without that library.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,7 +22,14 @@ ACCOUNT = struct.Struct("<i24s")
 ASSET = struct.Struct("<i24s6d")
 CONNECT, ASSET_QUERY, TRADES_QUERY = 10001, 20005, 20007
 ORDERS_QUERY, POSITIONS_QUERY = 20006, 20008
-READ_OPERATIONS = {'asset', 'asset_trades', 'asset_positions', 'asset_orders', 'asset_cancelable_orders', 'snapshot'}
+READ_OPERATIONS = {
+    "asset",
+    "asset_trades",
+    "asset_positions",
+    "asset_orders",
+    "asset_cancelable_orders",
+    "snapshot",
+}
 WORKER_MARKER = "QMTCLI_NATIVE_RESULT:"
 PROFILES = {
     "ringbuffer.dll": "b40def1af839286baaf6b8bdcde7c88a0c555dbfb56d9bb3592661db84922c48",
@@ -32,8 +40,13 @@ PROFILES = {
 def encode_account(account: str, account_type: str) -> bytes:
     if not isinstance(account_type, str) or account_type.upper() != "STOCK":
         raise ValueError("native asset currently supports STOCK accounts only")
-    if (not isinstance(account, str) or not account or not account.isascii()
-            or not account.isprintable() or account.isspace()):
+    if (
+        not isinstance(account, str)
+        or not account
+        or not account.isascii()
+        or not account.isprintable()
+        or account.isspace()
+    ):
         raise ValueError("account must be nonempty printable ASCII without control characters")
     if len(account) > 23:
         raise ValueError("account exceeds the native 23-byte limit")
@@ -60,7 +73,7 @@ def decode_frame(raw: bytes) -> tuple:
     seq, kind, action, last, session = HEADER.unpack_from(raw)
     if action not in (0, 1, 2) or last not in (0, 1):
         raise ValueError("invalid native message action/last flag")
-    return seq, kind, action, bool(last), session, raw[HEADER.size:]
+    return seq, kind, action, bool(last), session, raw[HEADER.size :]
 
 
 def decode_asset(raw: bytes, expected_account: str) -> dict:
@@ -93,7 +106,9 @@ def _validate_runtime(bin_dir: Path) -> None:
             raise RuntimeError(f"unsupported native MiniQMT build: {name} fingerprint mismatch")
 
 
-def query_native_asset(path: str, account: str, account_type: str = "STOCK", timeout: float = 5) -> dict:
+def query_native_asset(
+    path: str, account: str, account_type: str = "STOCK", timeout: float = 5
+) -> dict:
     """Query once in a crash-isolated worker; never fall back to SDK/cache data."""
     return _query_native(path, account, account_type, timeout, operation="asset")
 
@@ -114,10 +129,16 @@ def _remove_reply(reply: Path) -> None:
         pass  # Broker mapping can outlive the terminated worker briefly.
 
 
-def _query_native(path: str, account: str, account_type: str, timeout: float, operation: str) -> dict:
+def _query_native(
+    path: str, account: str, account_type: str, timeout: float, operation: str
+) -> dict:
     encode_account(account, account_type)
-    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
-            or not math.isfinite(timeout) or not 0.1 <= timeout <= 60):
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or not 0.1 <= timeout <= 60
+    ):
         raise ValueError("native timeout must be between 0.1 and 60 seconds")
     data, bin_dir = _paths(path)
     _validate_runtime(bin_dir)
@@ -125,6 +146,7 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
         raise ValueError("unsupported native read operation")
     if operation != "asset":
         from qmtcli.native_trades import validate_trade_runtime
+
         validate_trade_runtime(bin_dir)
     if not (data / "up_queue_xtquant").is_file():
         raise RuntimeError("MiniQMT native service queue is missing; start and log in to MiniQMT")
@@ -134,13 +156,24 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
         env = os.environ.copy()
         package_root = str(Path(__file__).resolve().parent.parent)
         env["PYTHONPATH"] = package_root + os.pathsep + env.get("PYTHONPATH", "")
-        request = {"path": str(data), "account": account, "session": session,
-                   "timeout": timeout, "owner": owner, "operation": operation}
+        request = {
+            "path": str(data),
+            "account": account,
+            "session": session,
+            "timeout": timeout,
+            "owner": owner,
+            "operation": operation,
+        }
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "qmtcli.native_asset"],
-                input=json.dumps(request), capture_output=True, text=True, encoding="utf-8",
-                timeout=timeout + 3, env=env,
+                input=json.dumps(request),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=timeout + 3,
+                env=env,
+                check=False,  # the returncode is read below
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except subprocess.TimeoutExpired as exc:
@@ -158,8 +191,9 @@ def _query_native(path: str, account: str, account_type: str, timeout: float, op
 def _parse_worker_output(output: str) -> dict:
     # The vendor runtime can write diagnostics at process teardown. Its stdout is
     # captured here; only our marked response reaches the public JSON transport.
-    messages = [line[len(WORKER_MARKER):] for line in output.splitlines()
-                if line.startswith(WORKER_MARKER)]
+    messages = [
+        line[len(WORKER_MARKER) :] for line in output.splitlines() if line.startswith(WORKER_MARKER)
+    ]
     try:
         if len(messages) != 1:
             raise ValueError("expected exactly one result")
@@ -191,37 +225,67 @@ class _Ring:
         size = c.c_uint64(len(self.mapping))
         self.obj = c.c_void_p()
         if create:
-            name = ("?create@RingBufferWriter@ringbuffer@base@@SA?AV?$unique_ptr@VRingBufferWriter@"
-                    "ringbuffer@base@@U?$default_delete@VRingBufferWriter@ringbuffer@base@@@std@@@"
-                    "std@@PEAXPEA_K_J2W4IOType@23@3W4WaitStrategyType@23@@Z")
-            fn = self._bind(name, c.c_void_p, c.POINTER(c.c_void_p), c.c_void_p,
-                            c.POINTER(c.c_uint64), c.c_int64, c.c_int64, c.c_int, c.c_int, c.c_int)
+            name = (
+                "?create@RingBufferWriter@ringbuffer@base@@SA?AV?$unique_ptr@VRingBufferWriter@"
+                "ringbuffer@base@@U?$default_delete@VRingBufferWriter@ringbuffer@base@@@std@@@"
+                "std@@PEAXPEA_K_J2W4IOType@23@3W4WaitStrategyType@23@@Z"
+            )
+            fn = self._bind(
+                name,
+                c.c_void_p,
+                c.POINTER(c.c_void_p),
+                c.c_void_p,
+                c.POINTER(c.c_uint64),
+                c.c_int64,
+                c.c_int64,
+                c.c_int,
+                c.c_int,
+                c.c_int,
+            )
             fn(c.byref(self.obj), address, c.byref(size), 512, 131072, 1, 0, 2)
         else:
-            if (len(self.mapping) < 75497752
-                    or self.mapping[:8] != b"Head\0\0\0\0"
-                    or struct.unpack_from("<5Q", self.mapping, 8) != (512, 131072, 1, 0, 2)):
+            if (
+                len(self.mapping) < 75497752
+                or self.mapping[:8] != b"Head\0\0\0\0"
+                or struct.unpack_from("<5Q", self.mapping, 8) != (512, 131072, 1, 0, 2)
+            ):
                 raise RuntimeError("invalid native queue header")
-            name = ("?resume@RingBufferWriter@ringbuffer@base@@SA?AV?$unique_ptr@VRingBufferWriter@"
-                    "ringbuffer@base@@U?$default_delete@VRingBufferWriter@ringbuffer@base@@@std@@@"
-                    "std@@PEAXPEA_K@Z")
-            fn = self._bind(name, c.c_void_p, c.POINTER(c.c_void_p), c.c_void_p,
-                            c.POINTER(c.c_uint64))
+            name = (
+                "?resume@RingBufferWriter@ringbuffer@base@@SA?AV?$unique_ptr@VRingBufferWriter@"
+                "ringbuffer@base@@U?$default_delete@VRingBufferWriter@ringbuffer@base@@@std@@@"
+                "std@@PEAXPEA_K@Z"
+            )
+            fn = self._bind(
+                name, c.c_void_p, c.POINTER(c.c_void_p), c.c_void_p, c.POINTER(c.c_uint64)
+            )
             fn(c.byref(self.obj), address, c.byref(size))
         if not self.obj.value:
             raise RuntimeError("native ringbuffer could not initialize queue")
-        self.get = self._bind("?get@RingBufferWriter@ringbuffer@base@@QEAAPEAX_J@Z",
-                              c.c_void_p, c.c_void_p, c.c_int64)
-        self.claim = self._bind("?tryClaim@RingBufferWriter@ringbuffer@base@@QEAA_NPEA_J@Z",
-                                c.c_bool, c.c_void_p, c.POINTER(c.c_int64))
-        self.commit = self._bind("?commit@RingBufferWriter@ringbuffer@base@@QEAAX_J@Z",
-                                 None, c.c_void_p, c.c_int64)
-        self.current = self._bind("?current@RingBufferReader@ringbuffer@base@@QEBA_JXZ",
-                                  c.c_int64, c.c_void_p)
-        self.wait = self._bind("?tryWaitFor@RingBufferReader@ringbuffer@base@@QEAA_N_JPEA_J@Z",
-                               c.c_bool, c.c_void_p, c.c_int64, c.POINTER(c.c_int64))
-        self.finish = self._bind("?finish@RingBufferReader@ringbuffer@base@@QEAAX_J@Z",
-                                 None, c.c_void_p, c.c_int64)
+        self.get = self._bind(
+            "?get@RingBufferWriter@ringbuffer@base@@QEAAPEAX_J@Z", c.c_void_p, c.c_void_p, c.c_int64
+        )
+        self.claim = self._bind(
+            "?tryClaim@RingBufferWriter@ringbuffer@base@@QEAA_NPEA_J@Z",
+            c.c_bool,
+            c.c_void_p,
+            c.POINTER(c.c_int64),
+        )
+        self.commit = self._bind(
+            "?commit@RingBufferWriter@ringbuffer@base@@QEAAX_J@Z", None, c.c_void_p, c.c_int64
+        )
+        self.current = self._bind(
+            "?current@RingBufferReader@ringbuffer@base@@QEBA_JXZ", c.c_int64, c.c_void_p
+        )
+        self.wait = self._bind(
+            "?tryWaitFor@RingBufferReader@ringbuffer@base@@QEAA_N_JPEA_J@Z",
+            c.c_bool,
+            c.c_void_p,
+            c.c_int64,
+            c.POINTER(c.c_int64),
+        )
+        self.finish = self._bind(
+            "?finish@RingBufferReader@ringbuffer@base@@QEAAX_J@Z", None, c.c_void_p, c.c_int64
+        )
 
     def _bind(self, name, result, *args):
         fn = getattr(self.library, name)
@@ -270,8 +334,10 @@ class _WorkerConnection:
         self.reply = _Ring(self.library, reserved_reply, create=True)
         self.outgoing = _Ring(self.library, data / "up_queue_xtquant")
         self.sequence = 1
-        self.outgoing.send(encode_frame(1, CONNECT, self.session,
-                                       struct.pack("<qi", self.session, os.getpid())), deadline)
+        self.outgoing.send(
+            encode_frame(1, CONNECT, self.session, struct.pack("<qi", self.session, os.getpid())),
+            deadline,
+        )
         self._connect(deadline)
 
     def _connect(self, deadline: float) -> None:
@@ -279,23 +345,29 @@ class _WorkerConnection:
             if source != self.session or kind == 20000:
                 raise RuntimeError("MiniQMT rejected the native connection")
             if kind == 10002 and seq == 1:
-                if (action != 1 or not last or len(body) < 8
-                        or struct.unpack_from("<q", body)[0] != self.session):
+                if (
+                    action != 1
+                    or not last
+                    or len(body) < 8
+                    or struct.unpack_from("<q", body)[0] != self.session
+                ):
                     raise RuntimeError("invalid native connection acknowledgement")
                 return
         raise TimeoutError("MiniQMT native connection timed out")
 
     def query(self, operation: str, timeout: float) -> dict:
         _validate_read(operation, timeout)
-        if operation not in {'asset', 'asset_trades'}:
+        if operation not in {"asset", "asset_trades"}:
             return self._query_records(operation, timeout)
         asset_seq, trade_seq = self.sequence + 1, self.sequence + 2
         trades = self._trade_replies(operation, asset_seq, trade_seq)
         self.sequence = trade_seq if trades is not None else asset_seq
         deadline = time.monotonic() + timeout
-        self.outgoing.send(encode_frame(asset_seq, ASSET_QUERY, self.session, self.account_raw), deadline)
+        self.outgoing.send(
+            encode_frame(asset_seq, ASSET_QUERY, self.session, self.account_raw), deadline
+        )
         for frame in self.reply.receive(deadline):
-            seq, kind, action, last, source, body = frame
+            seq, kind, _action, _last, source, _body = frame
             if source != self.session:
                 raise RuntimeError("native response belongs to another session")
             if seq not in (asset_seq, trade_seq):
@@ -305,7 +377,10 @@ class _WorkerConnection:
                 if rows is not None:
                     return {"asset": trades.asset, "trades": rows}
                 if seq == asset_seq and kind == 30001:
-                    self.outgoing.send(encode_frame(trade_seq, TRADES_QUERY, self.session, self.account_raw), deadline)
+                    self.outgoing.send(
+                        encode_frame(trade_seq, TRADES_QUERY, self.session, self.account_raw),
+                        deadline,
+                    )
             else:
                 result = self._asset_reply(frame, asset_seq)
                 if result is not None:
@@ -317,11 +392,12 @@ class _WorkerConnection:
         if operation != "asset_trades":
             return None
         from qmtcli.native_trades import TradeReplies, validate_trade_runtime
+
         validate_trade_runtime(self.bin_dir)
         return TradeReplies(self.account, self.session, asset_seq, trade_seq)
 
     def _asset_reply(self, frame: tuple, sequence: int) -> dict | None:
-        seq, kind, action, last, source, body = frame
+        seq, kind, action, last, _source, body = frame
         if kind == 20000:
             raise RuntimeError("MiniQMT rejected the native asset query")
         if seq == sequence and kind == 30001 and action == 1 and last:
@@ -331,38 +407,60 @@ class _WorkerConnection:
     def _query_records(self, operation: str, timeout: float) -> dict:
         from qmtcli.native_records import decode_order, decode_position
         from qmtcli.native_trades import decode_trade, validate_trade_runtime
+
         validate_trade_runtime(self.bin_dir)
         deadline = time.monotonic() + timeout
-        result = {'asset': self.query('asset', timeout)}
+        result = {"asset": self.query("asset", timeout)}
         plans = {
-            'positions': (POSITIONS_QUERY, 30004, 328, decode_position, self.account_raw + bytes(80)),
-            'orders': (ORDERS_QUERY, 30002, 476, decode_order,
-                       self.account_raw + struct.pack('<q?', 0, operation == 'asset_cancelable_orders')),
-            'trades': (TRADES_QUERY, 30003, 552, decode_trade, self.account_raw),
+            "positions": (
+                POSITIONS_QUERY,
+                30004,
+                328,
+                decode_position,
+                self.account_raw + bytes(80),
+            ),
+            "orders": (
+                ORDERS_QUERY,
+                30002,
+                476,
+                decode_order,
+                self.account_raw + struct.pack("<q?", 0, operation == "asset_cancelable_orders"),
+            ),
+            "trades": (TRADES_QUERY, 30003, 552, decode_trade, self.account_raw),
         }
-        keys = ('positions', 'orders', 'trades') if operation == 'snapshot' else (
-            'positions' if operation == 'asset_positions' else 'orders',)
+        keys = (
+            ("positions", "orders", "trades")
+            if operation == "snapshot"
+            else ("positions" if operation == "asset_positions" else "orders",)
+        )
         for key in keys:
-            result[key] = self._query_list(plans[key], result['asset'], deadline)
+            result[key] = self._query_list(plans[key], result["asset"], deadline)
         return result
 
     def _query_list(self, plan: tuple, asset: dict, deadline: float) -> list:
         from qmtcli.native_trades import TradeReplies
+
         request_kind, reply_kind, size, decoder, body = plan
         self.sequence += 1
-        replies = TradeReplies(self.account, self.session, trade_sequence=self.sequence,
-                               record_kind=reply_kind, record_size=size, decoder=decoder)
+        replies = TradeReplies(
+            self.account,
+            self.session,
+            trade_sequence=self.sequence,
+            record_kind=reply_kind,
+            record_size=size,
+            decoder=decoder,
+        )
         replies.asset = asset  # Obtained by this operation's successful account validation.
         self.outgoing.send(encode_frame(self.sequence, request_kind, self.session, body), deadline)
         for frame in self.reply.receive(deadline):
             if frame[4] != self.session:
-                raise RuntimeError('native response belongs to another session')
+                raise RuntimeError("native response belongs to another session")
             if frame[0] != self.sequence:
                 continue
             rows = replies.feed(frame)
             if rows is not None:
                 return rows
-        raise TimeoutError('MiniQMT native record response timed out')
+        raise TimeoutError("MiniQMT native record response timed out")
 
     def close(self) -> None:
         self.directory.close()
@@ -371,17 +469,23 @@ class _WorkerConnection:
 def _validate_read(operation: str, timeout: float) -> None:
     if operation not in READ_OPERATIONS:
         raise ValueError("unsupported native read operation")
-    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
-            or not math.isfinite(timeout) or not 0 < timeout <= 60):
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or not 0 < timeout <= 60
+    ):
         raise ValueError("invalid native response budget")
 
 
 def _worker(request: dict) -> dict:
-    _validate_read(request.get('operation', 'asset'), request['timeout'])
+    _validate_read(request.get("operation", "asset"), request["timeout"])
     deadline = time.monotonic() + float(request["timeout"])
     connection = _WorkerConnection(request)
     try:
-        return connection.query(request.get("operation", "asset"), max(0.001, deadline - time.monotonic()))
+        return connection.query(
+            request.get("operation", "asset"), max(0.001, deadline - time.monotonic())
+        )
     finally:
         connection.close()
 
@@ -396,10 +500,16 @@ def _serve_worker() -> None:
             request = json.loads(line)
             request_id = request["id"]
             value = connection.query(request["operation"], float(request["timeout"]))
-            print(WORKER_MARKER + json.dumps({"id": request_id, "ok": True, "data": value}), flush=True)
+            print(
+                WORKER_MARKER + json.dumps({"id": request_id, "ok": True, "data": value}),
+                flush=True,
+            )
     except Exception as error:
-        print(WORKER_MARKER + json.dumps({"id": request_id, "ready": False,
-                                         "ok": False, "error": str(error)}), flush=True)
+        print(
+            WORKER_MARKER
+            + json.dumps({"id": request_id, "ready": False, "ok": False, "error": str(error)}),
+            flush=True,
+        )
     finally:
         if connection is not None:
             connection.close()

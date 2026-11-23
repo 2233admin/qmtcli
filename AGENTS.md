@@ -35,6 +35,9 @@ Use `uv run ...` unless the package is installed into the active global Python.
   dispatched through `_handle_rpc_request`. Requires the optional `mcp` extra.
 - `tests/` - fake `xtquant` modules; tests must not require real QMT.
 - `examples/` - JSON and JSONL inputs for local automation.
+- `bridge/` - the strategy that runs inside full QMT and serves `src/qmtcli` over loopback HTTP.
+  `bridge/README.md` explains which copy the client actually loads and why editing this directory
+  does not change a running bridge.
 - `docs/repo-map.md` - which copy of this project you are editing (GitHub, this checkout, the
   `D:/projects/qmtcli` copy, LayerFS `qmtcli-20261024`) and which order policy each copy carries.
 - `docs/qmt-client-diagnosis.md` - where the QMT client log lives, which port carries login versus

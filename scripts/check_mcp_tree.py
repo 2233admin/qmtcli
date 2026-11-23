@@ -64,6 +64,7 @@ def capability_names(tree: Path) -> set[str]:
         env=env,
         capture_output=True,
         text=True,
+        check=False,  # the returncode is read below
     )
     if result.returncode != 0:
         print(f"cannot probe {tree}: {result.stderr.strip()}", file=sys.stderr)
@@ -87,6 +88,7 @@ def git_head(tree: Path) -> str:
         ["git", "-C", str(tree), "rev-parse", "--short", "HEAD"],
         capture_output=True,
         text=True,
+        check=False,  # a non-git tree is reported, not raised
     )
     return result.stdout.strip() if result.returncode == 0 else "not a git checkout"
 
@@ -122,10 +124,12 @@ def main() -> int:
         if extra:
             print(f"  served tree exposes commands this checkout does not: {', '.join(extra)}")
         if missing:
-            print(f"  this checkout exposes commands the served tree does not: {', '.join(missing)}")
+            print(
+                f"  this checkout exposes commands the served tree does not: {', '.join(missing)}"
+            )
         if extra or missing:
             order_note = ""
-            if (ORDER_COMMANDS & (served | local)):
+            if ORDER_COMMANDS & (served | local):
                 order_note = (
                     " The order surface differs, so the served tree and this checkout do not agree "
                     "on whether buy/sell/cancel exist."

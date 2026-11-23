@@ -1,4 +1,5 @@
 """Owned persistent native worker, shared only by sequential account requests."""
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,7 @@ class NativeSession:
         try:
             for line in process.stdout:
                 if line.startswith(transport.WORKER_MARKER):
-                    messages.put(json.loads(line[len(transport.WORKER_MARKER):]))
+                    messages.put(json.loads(line[len(transport.WORKER_MARKER) :]))
         except Exception:
             messages.put(RuntimeError("native worker returned invalid output"))
         finally:
@@ -54,20 +55,34 @@ class NativeSession:
         self.close()
         session, owner, self._reply = transport._reserve_reply(data)
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get("PYTHONPATH", "")
+        )
         self._messages = queue.Queue()
         self._process = subprocess.Popen(
             [sys.executable, "-m", "qmtcli.native_asset", "--server"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True, encoding="utf-8", env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env=env,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.generation += 1
-        self._reader = threading.Thread(target=self._read_output,
-                                        args=(self._process, self._messages), daemon=True)
+        self._reader = threading.Thread(
+            target=self._read_output, args=(self._process, self._messages), daemon=True
+        )
         self._reader.start()
-        self._send({"path": str(data), "account": self.account, "session": session,
-                    "owner": owner, "timeout": max(0.001, deadline - time.monotonic())})
+        self._send(
+            {
+                "path": str(data),
+                "account": self.account,
+                "session": session,
+                "owner": owner,
+                "timeout": max(0.001, deadline - time.monotonic()),
+            }
+        )
         ready = self._receive(deadline)
         if ready.get("ready") is not True:
             raise RuntimeError(ready.get("error", "native worker did not initialize"))
@@ -79,8 +94,12 @@ class NativeSession:
     def query(self, operation: str, timeout: float = 5) -> dict:
         if operation not in transport.READ_OPERATIONS:
             raise ValueError("unsupported native read operation")
-        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
-                or not math.isfinite(timeout) or not 0 < timeout <= 60):
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or not 0 < timeout <= 60
+        ):
             raise ValueError("native response timeout must be positive and at most 60 seconds")
         with self._lock:
             try:
@@ -88,14 +107,20 @@ class NativeSession:
                 transport._validate_runtime(bin_dir)
                 if operation != "asset":
                     from qmtcli.native_trades import validate_trade_runtime
+
                     validate_trade_runtime(bin_dir)
                 if not (data / "up_queue_xtquant").is_file():
                     raise RuntimeError("MiniQMT native service queue is missing")
                 deadline = time.monotonic() + timeout
                 self._start(data, deadline)
                 self._request += 1
-                self._send({"id": self._request, "operation": operation,
-                            "timeout": max(0.001, deadline - time.monotonic())})
+                self._send(
+                    {
+                        "id": self._request,
+                        "operation": operation,
+                        "timeout": max(0.001, deadline - time.monotonic()),
+                    }
+                )
                 response = self._receive(deadline)
                 if type(response.get("id")) is not int or response["id"] != self._request:
                     raise RuntimeError("native worker response does not match request")
@@ -121,9 +146,14 @@ class NativeSession:
                         # A Windows launcher can own a child interpreter. Kill only
                         # this Popen-owned process tree, never shared QMT processes.
                         if os.name == "nt":
-                            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                           timeout=3, creationflags=subprocess.CREATE_NO_WINDOW)
+                            subprocess.run(
+                                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=False,  # best-effort kill
+                                timeout=3,
+                                creationflags=subprocess.CREATE_NO_WINDOW,
+                            )
                         else:
                             process.kill()
                         process.wait(timeout=3)
