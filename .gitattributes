@@ -1,0 +1,8 @@
+# connection.json pins these files by sha256 and bootstrap.BRIDGE_SHA256 is the
+# same digest. A checkout that rewrites line endings changes the bytes and the
+# strategy refuses to start, so these five keep LF everywhere.
+bridge/daqmt_server.py text eol=lf
+bridge/daqmt_api.py text eol=lf
+bridge/daqmt_codec.py text eol=lf
+bridge/daqmt_stream.py text eol=lf
+bridge/catalog.json text eol=lf

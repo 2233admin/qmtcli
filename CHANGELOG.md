@@ -17,6 +17,13 @@ begin.
   live on 2026-11-23: `passorder` returned without error on a client whose trade channel was not
   ready after a restart, and no order reached the book or the broker.
 
+- `passorder_form` in `connection.json` selects which `passorder` overload the bridge calls: `full`
+  (11 arguments, carries `userOrderId`), `no_key` (10, drops `userOrderId`) or `minimal` (9, also
+  drops `quickTrade`). The default stays `full`. The read-back matches on the remark for `full` and
+  on a new row with the same stock, direction, price and volume for the short forms, so a form can
+  be tested without losing the "did it land" check. Added because `passorder` silently returned 0
+  in QMT simulation mode on 2026-11-23 and no order reached the book.
+
 - `qmtcli buy`, `sell` and `cancel` now go through the strategy bridge, the same way `qmtcli account`
   reads do. They used to call `XtQuantTrader.order_stock` in-process, which is the route that cannot
   connect to full QMT (the -1/-12 failure). The bridge already exposed `POST /api/order/buy|sell` and

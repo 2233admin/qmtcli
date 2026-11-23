@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "efd8507297391fc977e0d9fc09fe5bb43c552470ce8be3d1d705bceffde9293d"
+BRIDGE_SHA256 = "c407a024f1f5e4d27445d57bc399998a124bf960ed967b3973d0e2f9e6aecb8a"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
@@ -36,7 +36,11 @@ PINNED_ASSETS = ("daqmt_server.py", "daqmt_api.py", "daqmt_codec.py",
 
 # Order-safety keys an older connection file predates. The bridge defaults an absent one
 # to off, so this only makes the current values visible in the report.
-TRADING_DEFAULTS = {"dry_run": False, "max_order_amount": 500000}
+TRADING_DEFAULTS = {
+    "dry_run": False,
+    "max_order_amount": 500000,
+    "passorder_form": "full",
+}
 
 MANUAL_STEPS = [
     "在客户端里登录资金账号 (图形界面, 程序不能代做)",
@@ -248,7 +252,8 @@ def run(
     if connection.is_file() and apply:
         added = _ensure_trading_config(connection)
         steps.append(_step("trading_config", True,
-                           ", ".join(added) or "dry_run and max_order_amount present"))
+                           ", ".join(added)
+                           or "trading keys present: " + ", ".join(TRADING_DEFAULTS)))
     if source is not None:
         states = _asset_states(source.parent, resource, _pinned_assets(connection))
         stale = [name for name, state in states.items() if not state["ok"]]

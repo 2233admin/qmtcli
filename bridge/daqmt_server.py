@@ -35,6 +35,9 @@ from tornado.ioloop import IOLoop
 
 _BRIDGE_SECRET = os.environ.get('DAQMT_BRIDGE_SECRET', '')
 _TRADING_ENABLED = os.environ.get('DAQMT_ALLOW_TRADING') == '1'
+# passorder has 8-, 9-, 10- and 11-argument overloads; only the 11-argument one
+# carries userOrderId, so the short forms cannot round-trip an idempotency key.
+PASSORDER_FORMS = ('full', 'no_key', 'minimal')
 _HTTP_LOOP = None
 _HTTP_SERVER = None
 _HTTP_TIMER = None
@@ -75,7 +78,7 @@ def _read_startup_config(path=None):
             raise ValueError()
         allowed = {'protocol', 'endpoint', 'secret', 'account', 'account_type', 'timeout',
                    'trading_enabled', 'data_write_enabled', 'strategy_write_enabled',
-                   'dry_run', 'max_order_amount',
+                   'dry_run', 'max_order_amount', 'passorder_form',
                    'resource_dir', 'assets', 'init_properties', 'init_calls'}
         if set(config) - allowed or config.get('protocol') != 1:
             raise ValueError()
@@ -103,6 +106,10 @@ def _read_startup_config(path=None):
             raise ValueError()
         config['dry_run'] = bool(config.get('dry_run', False))
         config['max_order_amount'] = cap
+        form = config.get('passorder_form', 'full')
+        if form not in PASSORDER_FORMS:
+            raise ValueError()
+        config['passorder_form'] = form
         timeout = config.get('timeout', 10)
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 3600:
             raise ValueError()
@@ -156,6 +163,7 @@ ACCOUNT_TYPE_MAP = {
 ACTIVE_ORDER_STATUS = (0, 1, 5)
 
 DIRECTION_BUY = 48  # ord('0') -- DaQMT internal buy flag for stocks
+OPCODE_BUY = 23  # passorder opType for a stock buy
 
 
 # ---------------------------------------------------------------------------
@@ -293,14 +301,39 @@ def _query_trades(accountID, account_type):
     # POSITION_STATISTICS, ORDER, DEAL, TASK (catalog.json:7071). 'trade' returned [].
     return globals()['get_trade_detail_data'](accountID, account_type, 'deal') or []
 
-def _confirm_order(accountID, account_type, user_order_id, attempts=3):
-    """Return the order-book row carrying this idempotency key, or None.
+def _order_fingerprint(record):
+    """What identifies an order when the remark cannot carry our key."""
+    return (record['code'], record['direction'], record['price'], record['volume'])
+
+
+def _order_ids(accountID, account_type):
+    """Order ids present before a submission, so a new row can be spotted."""
+    try:
+        rows = _query_orders(accountID, account_type)
+    except Exception:
+        logger.exception('order book snapshot failed')
+        return set()
+    ids = set()
+    for row in rows:
+        try:
+            ids.add(_order_to_dict(row)['order_id'])
+        except Exception:
+            continue
+    return ids
+
+
+def _confirm_order(accountID, account_type, user_order_id, intent, known, attempts=3):
+    """Return the order-book row this submission created, or None.
 
     QMT can accept a passorder call and still create nothing: observed when the
     client's trade channel was not ready after a restart, where passorder
     returned 0 and no order reached the book. Without this read-back a 202 would
     look like success. The sleep blocks the loop briefly, but an accepted order
     lands in the local book within milliseconds and this runs once per order.
+
+    The remark match is exact. The short passorder forms carry no userOrderId, so
+    they fall back to a row that is new since the pre-submit snapshot and has the
+    same stock, direction, price and volume.
     """
     for attempt in range(attempts):
         try:
@@ -313,7 +346,9 @@ def _confirm_order(accountID, account_type, user_order_id, attempts=3):
                 record = _order_to_dict(row)
             except Exception:
                 continue
-            if record['user_order_id'] == user_order_id:
+            if user_order_id and record['user_order_id'] == user_order_id:
+                return record
+            if record['order_id'] not in known and _order_fingerprint(record) == intent:
                 return record
         if attempt + 1 < attempts:
             time.sleep(0.2)
@@ -627,12 +662,20 @@ class _PlaceOrderMixin(object):
                 'prType': price_type, 'user_order_id': user_order_id, 'broker_accepted': None,
             })
             return
+        form = (_SDK_CONFIG or {}).get('passorder_form', 'full')
+        intent = (stock, 'buy' if self.DIRECTION_CODE == OPCODE_BUY else 'sell',
+                  price, volume)
+        known = set() if form == 'full' else _order_ids(
+            self._account(), _account_type('stock'))
         try:
             # The documented expanded form puts userOrderId before ContextInfo.
-            native_result = globals()['passorder'](
-                self.DIRECTION_CODE, 1101, self._account(), stock,
-                price_type, price, volume, 'qmt', 2, user_order_id, self._ctx(),
-            )
+            args = [self.DIRECTION_CODE, 1101, self._account(), stock,
+                    price_type, price, volume, 'qmt']
+            if form in ('full', 'no_key'):
+                args.append(2)
+            if form == 'full':
+                args.append(user_order_id)
+            native_result = globals()['passorder'](*(args + [self._ctx()]))
             if isinstance(native_result, int) and native_result < 0:
                 raise RuntimeError('passorder returned failure code {0}'.format(native_result))
         except Exception as exc:
@@ -646,7 +689,8 @@ class _PlaceOrderMixin(object):
                 'user_order_id': user_order_id, 'broker_accepted': None, 'retry_safe': False,
             }, status=502)
             return
-        record = _confirm_order(self._account(), _account_type('stock'), user_order_id)
+        record = _confirm_order(self._account(), _account_type('stock'), user_order_id,
+                                intent, known)
         with _RESERVATION_LOCK:
             if user_order_id in _ORDER_RESERVATIONS:
                 _ORDER_RESERVATIONS[user_order_id]['status'] = (

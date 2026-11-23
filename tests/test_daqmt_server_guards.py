@@ -151,9 +151,9 @@ class _OrderRoute:
         self.replies.append((status, payload))
 
 
-def _route(server, body, *, dry_run=False, accepted=True):
+def _route(server, body, *, dry_run=False, accepted=True, config=None):
     route = _OrderRoute(body, dry_run=dry_run)
-    server._SDK_CONFIG = {"max_order_amount": 0}
+    server._SDK_CONFIG = config or {"max_order_amount": 0}
     key = body.get("user_order_id") or ""
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(
@@ -265,3 +265,47 @@ def test_an_unknown_outcome_is_not_reported_as_a_duplicate(server, monkeypatch):
 
     assert retry.replies[0][0] == 409
     assert retry.replies[0][1]["status"] == "unknown"
+
+
+@pytest.mark.parametrize("form,expected", [("full", 11), ("no_key", 10), ("minimal", 9)])
+def test_each_form_sends_its_own_argument_count(server, monkeypatch, form, expected):
+    seen = []
+    monkeypatch.setattr(server, "passorder", lambda *args: seen.append(args) or 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+
+    _route(
+        server,
+        {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "form1"},
+        config={"max_order_amount": 0, "passorder_form": form},
+    )
+
+    assert len(seen[0]) == expected
+
+
+def test_the_full_form_carries_the_idempotency_key(server, monkeypatch):
+    seen = []
+    monkeypatch.setattr(server, "passorder", lambda *args: seen.append(args) or 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+
+    _route(
+        server,
+        {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "form2"},
+        config={"max_order_amount": 0, "passorder_form": "full"},
+    )
+
+    assert seen[0][9] == "form2"
+
+
+def test_a_short_form_reads_the_new_row_back_by_shape(server, monkeypatch):
+    monkeypatch.setattr(server, "passorder", lambda *args: 0, raising=False)
+    monkeypatch.setattr(server, "_order_ids", lambda *args: set())
+    server._ORDER_RESERVATIONS.clear()
+
+    route = _route(
+        server,
+        {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "form3"},
+        config={"max_order_amount": 0, "passorder_form": "minimal"},
+    )
+
+    assert route.replies[0][0] == 202
+    assert route.replies[0][1]["order_id"] == "143327"

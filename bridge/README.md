@@ -93,4 +93,6 @@ After `passorder` returns, the bridge reads the order book back and looks for th
 
 Unknown outcome: `passorder` exception, timeout, or a return with no matching row in the order book answers HTTP 502 `unknown` with `retry_safe: false`. The reservation moves to `outcome_unknown` and a later call with that key answers HTTP 409, never a duplicate. Do not auto-retry; query orders and deals first.
 
+`passorder_form` in `connection.json` selects the overload: `full` (default, 11 arguments, carries `userOrderId` so the read-back matches the remark), `no_key` (10 arguments, no `userOrderId`, read-back matches a row that is new since the pre-submit snapshot and has the same stock, direction, price and volume), `minimal` (9 arguments, no `quickTrade` either). Only `full` was verified live. Switch the form when a QMT build or a trading mode silently drops one of them; the read-back tells you which one landed.
+
 Trades use `DEAL` datatype (not `TRADE`). Each deal includes `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount` and `direction`.
