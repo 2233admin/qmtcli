@@ -59,8 +59,8 @@ Use `uv run ...` unless the package is installed into the active global Python.
   this checkout and stays green while the client runs old bytes, so only this check shows that the
   change reached the client.
 - `bridge/` is excluded from `ruff format` (`[tool.ruff.format]` in `pyproject.toml`)
-  because those files are single-quoted and sha256-pinned. `ruff check` still lints
-  them; only the formatter steps back.
+  because those files are sha256-pinned and deployed byte-identical elsewhere.
+  `ruff check` still lints them; only the formatter steps back.
 
 ## Safety Boundaries
 

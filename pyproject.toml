@@ -62,9 +62,9 @@ select = [
 ]
 
 [tool.ruff.format]
-# bridge/ is single-quoted and sha256-pinned: one reformatted byte breaks the digest
-# bootstrap.BRIDGE_SHA256 pins and the strategy refuses to start. Verified against the
-# editor path (`ruff format --stdin-filename`), which is how format-on-write arrives.
+# bridge/ is sha256-pinned and deployed byte-identical to two other locations: one
+# editor reformat breaks the digest bootstrap.BRIDGE_SHA256 pins and the strategy
+# refuses to start. The files are format-clean; this keeps them byte-stable.
 exclude = ["bridge"]
 
 [tool.pytest.ini_options]
