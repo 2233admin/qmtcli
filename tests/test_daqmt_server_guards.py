@@ -349,3 +349,12 @@ def test_health_reports_the_digest_of_the_running_bridge(server):
     assert server.BRIDGE_SHA256 is not None
     assert len(server.BRIDGE_SHA256) == 64
     assert handler.payload["bridge_sha256"] == server.BRIDGE_SHA256
+
+
+def test_the_bridge_identifies_itself_when_the_loader_omits_file(server):
+    """QMT execs a strategy without __file__, so the code object is the fallback."""
+    namespace = {"__name__": "daqmt_server_without_file"}
+    exec(compile(_SERVER.read_text(encoding="utf-8"), str(_SERVER), "exec"), namespace)
+
+    assert namespace["BRIDGE_SHA_ERROR"] is None
+    assert namespace["BRIDGE_SHA256"] == server.BRIDGE_SHA256

@@ -54,12 +54,36 @@ def _sha256_of(path):
     return digest.hexdigest()
 
 
+def _own_source_path():
+    """This module's file, with or without the __file__ a strategy loader may omit."""
+    try:
+        candidate = __file__
+    except NameError:
+        candidate = None
+    if candidate and os.path.isfile(candidate):
+        return candidate
+    frame = sys._getframe(1)
+    while frame is not None:
+        name = frame.f_code.co_filename
+        if name and not name.startswith("<") and os.path.isfile(name):
+            return name
+        frame = frame.f_back
+    return candidate
+
+
 # The strategy file is a byte copy of this module, so hashing ourselves tells a host
-# whether the process that is serving requests loaded the code that is on disk.
+# whether the process that is serving requests loaded the code that is on disk. QMT
+# runs a strategy without defining __file__, so the code object is the fallback, and
+# a failure is reported by /api/health instead of passing as a null digest.
+BRIDGE_SHA256 = None
+BRIDGE_SHA_ERROR = None
 try:
-    BRIDGE_SHA256 = _sha256_of(__file__)
-except (OSError, NameError):
-    BRIDGE_SHA256 = None
+    _SELF_PATH = _own_source_path()
+    BRIDGE_SHA256 = _sha256_of(_SELF_PATH) if _SELF_PATH else None
+    if not _SELF_PATH:
+        BRIDGE_SHA_ERROR = "own source path not found"
+except OSError as exc:
+    BRIDGE_SHA_ERROR = "%s: %s" % (type(exc).__name__, exc)
 
 # Reservations are per process only: a restart loses them, so a retry has to reconcile
 # against today's orders and deals before it may submit again.
@@ -582,6 +606,7 @@ class HealthHandler(BaseHandler):
                 "bridge_running": True,
                 "trading_enabled": self.application.trading_enabled,
                 "bridge_sha256": BRIDGE_SHA256,
+                "bridge_sha_error": BRIDGE_SHA_ERROR,
                 "capability_observation": "callable-only; not native liveness",
                 "capabilities": {
                     name: callable(getattr(self._ctx(), name, None)) for name in methods
