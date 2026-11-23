@@ -225,3 +225,36 @@ def test_cancel_order_targets_one_sys_id(tmp_path, captured):
     sent = captured[0]
     assert sent.full_url.endswith("/api/order/cancel_by_id")
     assert json.loads(sent.data) == {"order_sys_id": "143327", "account": "stock"}
+
+
+def test_place_order_sends_user_order_id_to_server(tmp_path, captured):
+    """Client sends user_order_id to server; server handles idempotency."""
+    host = _write_connection(tmp_path)
+
+    daqmt_market.place_order(
+        side="buy",
+        stock="300308.SZ",
+        volume=100,
+        price=396.0,
+        user_order_id="abc123",
+        host_dir=str(host),
+    )
+
+    sent = captured[0]
+    assert sent.full_url.endswith("/api/order/buy")
+    body = json.loads(sent.data)
+    assert body["user_order_id"] == "abc123"
+
+
+def test_place_order_sends_dry_run_only_when_asked(tmp_path, captured):
+    host = _write_connection(tmp_path)
+
+    daqmt_market.place_order(
+        side="buy", stock="300308.SZ", volume=100, price=396.0, host_dir=str(host)
+    )
+    daqmt_market.place_order(
+        side="buy", stock="300308.SZ", volume=100, price=396.0, dry_run=True, host_dir=str(host)
+    )
+
+    assert "dry_run" not in json.loads(captured[0].data)
+    assert json.loads(captured[1].data)["dry_run"] is True

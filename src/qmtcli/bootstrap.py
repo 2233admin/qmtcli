@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "65e1461801b816fe1160b894edd30e507f852fdeac28fd24b645c4bf46dc917e"
+BRIDGE_SHA256 = "c1e9931dad23d5565399104284c3060049f70334194146df87ab74818e3a321d"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
@@ -33,6 +33,11 @@ FIXED_RELEASE_SHA256 = "7749aaece5b71f697cb0e6ebc5bf91d655d5353b94cfc7f66f5b64eb
 # is missing or differs, so deploying only the entry point leaves a half-installed bridge.
 PINNED_ASSETS = ("daqmt_server.py", "daqmt_api.py", "daqmt_codec.py",
                 "daqmt_stream.py", "catalog.json")
+
+# Order-safety keys an older connection file predates. The bridge reads both at
+# strategy start and defaults an absent one to off, so this only makes the current
+# values visible in the report.
+TRADING_DEFAULTS = {"dry_run": False, "max_order_amount": 500000}
 
 MANUAL_STEPS = [
     "在客户端里登录资金账号 (图形界面, 程序不能代做)",
@@ -48,6 +53,20 @@ def _sha256(path: Path) -> str:
 
 def _step(name: str, ok: bool, detail: str) -> dict:
     return {"name": name, "ok": ok, "detail": detail}
+
+
+def _ensure_trading_config(connection: Path) -> list[str]:
+    """Add the order-safety keys an older connection file predates."""
+    try:
+        config = json.loads(connection.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    missing = [key for key in TRADING_DEFAULTS if key not in config]
+    if not missing:
+        return []
+    config.update({key: TRADING_DEFAULTS[key] for key in missing})
+    connection.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+    return ["added " + ", ".join(missing)]
 
 
 def _pinned_assets(connection: Path) -> dict | None:
@@ -227,6 +246,10 @@ def run(
     steps.append(_step("connection", connection.is_file(),
                        str(connection) if connection.is_file()
                        else f"run: {exe} setup --account {account} --port {port}"))
+    if connection.is_file() and apply:
+        added = _ensure_trading_config(connection)
+        steps.append(_step("trading_config", True,
+                           ", ".join(added) or "dry_run and max_order_amount present"))
     if source is not None:
         states = _asset_states(source.parent, resource, _pinned_assets(connection))
         stale = [name for name, state in states.items() if not state["ok"]]

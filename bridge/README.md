@@ -73,3 +73,22 @@ would report green on a config that cannot boot.
 The bridge refuses to start unless it is running as a complete strategy inside full QMT: it checks for `get_trade_detail_data` and, when trading is enabled, `passorder`, `cancel`, `can_cancel_order`, `ContextInfo.schedule_run` and `ContextInfo.cancel_schedule_run`. A missing name raises `Run the complete strategy directly inside full QMT` at `daqmt_server.py:1196-1203`.
 
 Trading stays off unless `DAQMT_ALLOW_TRADING == '1'` (`:36`) or the config sets `trading_enabled`, and no request is served without a matching `X-Bridge-Secret` (`:322-328`).
+
+## Order safety (2026-11)
+
+Orders go through dedicated endpoints `/api/order/buy` and `/api/order/sell` only. The generic `/api/call` rejects `passorder`, `algo_passorder`, `smart_algo_passorder` and all backtest order functions (`order_shares`, `order_value`, etc.) with HTTP 403.
+
+Dedicated endpoints accept only `prType=11` (limit orders). Market orders, algorithmic orders and smart-algo orders are rejected.
+
+Validation order:
+1. Price band: limit price must be within `[DownStopPrice, UpStopPrice]` and on the tick grid
+2. Amount cap: `price * volume <= max_order_amount` (0 = no cap)
+3. Contract detail missing or invalid → reject, fail closed
+
+Dry-run (`"dry_run": true` in body or `dry_run: true` in `connection.json`) executes all validation but returns before `passorder`. It does not reserve an idempotency key.
+
+Server-side idempotency: `user_order_id` is the reservation key. The bridge reserves it before validation, binds it to the full order intent (stock, price, volume, prType, direction), and uses it to detect duplicates. Same key + same terms → HTTP 200 `duplicate`. Same key + different terms → HTTP 409 `conflict`. Reservation is process-local; restart loses it but orders remain queryable by `orders()`.
+
+Unknown outcome: `passorder` exception or timeout returns HTTP 502 `outcome_unknown` with `retry_safe: false`. The reservation stays reserved for the bridge process lifetime. Do not auto-retry; query orders and deals first.
+
+Trades use `DEAL` datatype (not `TRADE`). Each deal includes `user_order_id`, `order_id`, `commission`, `price`, `volume`, `amount` and `direction`.

@@ -262,6 +262,7 @@ def place_order(
     volume: int,
     price: float,
     user_order_id: str | None = None,
+    dry_run: bool = False,
     host_dir: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> Any:
@@ -269,14 +270,24 @@ def place_order(
 
     A 202 ``submitted`` means ``passorder`` returned, not that the broker
     accepted the order. Read ``orders()`` for the outcome.
+
+    ``user_order_id`` makes a retry idempotent: the bridge copies the value into
+    the order's ``m_strRemark`` and uses it as the reservation key. If an order
+    with the same key already exists, the bridge returns it instead of submitting
+    a second one.
     """
     if side not in ("buy", "sell"):
         raise ValueError("side must be buy or sell")
     body: dict[str, Any] = {
-        "stock": stock, "volume": volume, "price": price, "prType": 11,
+        "stock": stock,
+        "volume": volume,
+        "price": price,
+        "prType": 11,
     }
     if user_order_id:
         body["user_order_id"] = user_order_id
+    if dry_run:
+        body["dry_run"] = True
     return post(f"/api/order/{side}", body, host_dir=host_dir, timeout=timeout)
 
 

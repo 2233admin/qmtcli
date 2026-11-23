@@ -1446,6 +1446,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
     )
     buy.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
+    buy.add_argument(
+        "--user-order-id",
+        default="",
+        help="idempotency key; a retry with the same value returns the existing order",
+    )
+    buy.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and print the order without calling passorder",
+    )
 
     sell = subparsers.add_parser(
         "sell",
@@ -1460,6 +1470,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
     )
     sell.add_argument("--timeout", type=float, default=5, help="per-request timeout in seconds")
+    sell.add_argument(
+        "--user-order-id",
+        default="",
+        help="idempotency key; a retry with the same value returns the existing order",
+    )
+    sell.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and print the order without calling passorder",
+    )
 
     cancel = subparsers.add_parser(
         "cancel",
@@ -1638,6 +1658,8 @@ def _handle_order_command(args: argparse.Namespace) -> int:
                 stock=args.symbol,
                 volume=args.volume,
                 price=args.price,
+                user_order_id=getattr(args, "user_order_id", "") or None,
+                dry_run=getattr(args, "dry_run", False),
                 **options,
             )
     except daqmt_market.BridgeError as exc:
