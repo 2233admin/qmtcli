@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "42d5ad03961f540c81f7f82bd48d927f0b6e13ff8b5061e9834cde897ebeda4c"
+BRIDGE_SHA256 = "3f8ef91ea001fbb694af09046b643391b3e85da20f6030ee69c057a04157ecb3"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
@@ -178,12 +178,30 @@ def _bridge_source(explicit: str | None) -> Path | None:
     return None
 
 
-def _probe(base_url: str | None, secret: str) -> dict | None:
-    if not base_url:
+def _connection_target(connection: Path) -> tuple[str, str] | None:
+    """Endpoint and secret from connection.json, so the probe needs no flags."""
+    try:
+        config = json.loads(connection.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
+    if not isinstance(config, dict):
+        return None
+    endpoint = str(config.get("endpoint") or "").rstrip("/")
+    if not endpoint:
+        return None
+    return endpoint, str(config.get("secret") or "")
+
+
+def _probe(base_url: str | None, secret: str,
+           target: tuple[str, str] | None = None) -> dict | None:
+    """Health of a running bridge, from --base-url or from connection.json."""
+    endpoint = base_url.rstrip("/") if base_url else (target[0] if target else "")
+    if not endpoint:
+        return None
+    key = secret or (target[1] if target else "")
 
     def get(path: str):
-        request = urllib.request.Request(f"{base_url}{path}", headers={"X-Bridge-Secret": secret})
+        request = urllib.request.Request(f"{endpoint}{path}", headers={"X-Bridge-Secret": key})
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310 - loopback
             return json.loads(response.read())
 
@@ -197,6 +215,7 @@ def _probe(base_url: str | None, secret: str) -> dict | None:
         "bridge_running": health.get("bridge_running"),
         "trading_enabled": health.get("trading_enabled"),
         "cash": asset.get("cash"),
+        "bridge_sha256": health.get("bridge_sha256"),
     }
 
 
@@ -265,9 +284,17 @@ def run(
             states = _asset_states(source.parent, resource, _pinned_assets(connection))
         steps.append(_asset_step(states))
 
-    probe = _probe(base_url, secret)
+    probe = _probe(base_url, secret, _connection_target(connection))
     if probe is not None:
-        steps.append(_step("bridge_live", bool(probe.get("reachable")), str(probe)))
+        running = probe.get("bridge_sha256")
+        fresh = running is not None and running == BRIDGE_SHA256
+        detail = str(probe)
+        if probe.get("reachable") and not fresh:
+            detail = (
+                "running %s, on disk %s: restart the strategy in the client"
+                % (running[:12] if running else "an unknown build", BRIDGE_SHA256[:12])
+            )
+        steps.append(_step("bridge_live", bool(probe.get("reachable")) and fresh, detail))
 
     return {
         "ok": all(step["ok"] for step in steps),

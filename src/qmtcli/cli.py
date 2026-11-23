@@ -943,10 +943,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bootstrap.add_argument("--apply", action="store_true", help="perform the copy steps")
     bootstrap.add_argument(
-        "--base-url", default="", help="probe a running bridge, e.g. http://127.0.0.1:19001"
+        "--base-url",
+        default="",
+        help="probe a running bridge, e.g. http://127.0.0.1:19001; default: connection.json",
     )
     bootstrap.add_argument(
-        "--secret", default="", help="X-Bridge-Secret for the probe; never stored"
+        "--secret",
+        default="",
+        help="X-Bridge-Secret for the probe; default: connection.json; never stored",
     )
     asset = subparsers.add_parser("asset", help="query stock asset for --account")
     asset.add_argument(

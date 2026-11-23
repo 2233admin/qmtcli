@@ -327,3 +327,25 @@ def test_an_unverified_status_reports_null_not_a_guess(server):
 
     assert record["status"] == 57
     assert record["status_name"] is None
+
+
+def test_health_reports_the_digest_of_the_running_bridge(server):
+    """A host compares this with the digest on disk to see whether a restart is due."""
+
+    class _Health:
+        def __init__(self):
+            self.application = type("App", (), {"trading_enabled": True})()
+            self.payload = None
+
+        def _ctx(self):
+            return type("Ctx", (), {"get_full_tick": staticmethod(lambda: None)})()
+
+        def write_json(self, payload, status=None):
+            self.payload = payload
+
+    handler = _Health()
+    server.HealthHandler.get(handler)
+
+    assert server.BRIDGE_SHA256 is not None
+    assert len(server.BRIDGE_SHA256) == 64
+    assert handler.payload["bridge_sha256"] == server.BRIDGE_SHA256

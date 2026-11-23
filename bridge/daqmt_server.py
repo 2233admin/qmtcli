@@ -43,6 +43,23 @@ _HTTP_SERVER = None
 _HTTP_TIMER = None
 _SDK_SERVICE = None
 
+
+def _sha256_of(path):
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(65536), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+# The strategy file is a byte copy of this module, so hashing ourselves tells a host
+# whether the process that is serving requests loaded the code that is on disk.
+try:
+    BRIDGE_SHA256 = _sha256_of(__file__)
+except (OSError, NameError):
+    BRIDGE_SHA256 = None
+
 # Reservations are per process only: a restart loses them, so a retry has to reconcile
 # against today's orders and deals before it may submit again.
 _ORDER_RESERVATIONS = {}
@@ -489,6 +506,7 @@ class HealthHandler(BaseHandler):
                    'subscribe_whole_quote', 'get_all_subscription', 'unsubscribe_quote')
         self.write_json({'backend': 'daqmt', 'bridge_running': True,
                          'trading_enabled': self.application.trading_enabled,
+                         'bridge_sha256': BRIDGE_SHA256,
                          'capability_observation': 'callable-only; not native liveness',
                          'capabilities': {name: callable(getattr(self._ctx(), name, None)) for name in methods}})
 
