@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -27,6 +28,11 @@ STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
 FIXED_RELEASE_SHA256 = "7749aaece5b71f697cb0e6ebc5bf91d655d5353b94cfc7f66f5b64eb323e16d1"
+
+# Every file connection.json pins by sha256. The strategy refuses to start when one
+# is missing or differs, so deploying only the entry point leaves a half-installed bridge.
+PINNED_ASSETS = ("daqmt_server.py", "daqmt_api.py", "daqmt_codec.py",
+                "daqmt_stream.py", "catalog.json")
 
 MANUAL_STEPS = [
     "在客户端里登录资金账号 (图形界面, 程序不能代做)",
@@ -42,6 +48,96 @@ def _sha256(path: Path) -> str:
 
 def _step(name: str, ok: bool, detail: str) -> dict:
     return {"name": name, "ok": ok, "detail": detail}
+
+
+def _pinned_assets(connection: Path) -> dict | None:
+    """The assets map connection.json pins, or None when it cannot be read."""
+    try:
+        config = json.loads(connection.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    assets = config.get("assets")
+    return assets if isinstance(assets, dict) else None
+
+
+def _asset_states(source_dir: Path, resource: Path,
+                  pinned: dict | None = None) -> dict[str, dict]:
+    """Per asset: in the repo, deployed byte-identical, and digest recorded in the config.
+
+    A wrong digest matters as much as a wrong file: the strategy refuses to start on a
+    mismatch, so the file check alone would report green on a config that cannot boot.
+    """
+    states: dict[str, dict] = {}
+    for name in PINNED_ASSETS:
+        src = source_dir / name
+        if not src.is_file():
+            states[name] = _step(name, False, f"missing in {source_dir}")
+            continue
+        dst = resource / name
+        if not dst.is_file():
+            states[name] = _step(name, False, "not deployed")
+            continue
+        digest = _sha256(dst)
+        if digest != _sha256(src):
+            states[name] = _step(name, False, f"DIFFERS from {src}")
+        elif pinned is not None and pinned.get(name) != digest:
+            states[name] = _step(name, False, "digest not pinned in connection.json")
+        else:
+            states[name] = _step(name, True, "current")
+    return states
+
+
+def _asset_step(states: dict[str, dict]) -> dict:
+    """Collapse the per-asset states into one reported step."""
+    stale = [name for name, state in states.items() if not state["ok"]]
+    detail = "all current" if not stale else "; ".join(
+        f"{name}: {states[name]['detail']}" for name in stale)
+    return _step("bridge_assets", not stale, detail)
+
+
+def _retarget_assets(connection: Path, resource: Path) -> dict:
+    """Point connection.json.assets at the bytes now sitting in resource_dir.
+
+    Only the assets map is touched. The secret, account and flags belong to
+    qmtcli-rs setup, and the strategy refuses to start on a digest mismatch, so this
+    must run after the copies and before the next strategy start.
+    """
+    try:
+        config = json.loads(connection.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _step("assets_digests", False, f"cannot read {connection}")
+    assets = config.get("assets")
+    if not isinstance(assets, dict):
+        return _step("assets_digests", False, "connection.json has no assets map")
+    changed = []
+    for name in PINNED_ASSETS:
+        asset = resource / name
+        if not asset.is_file():
+            return _step("assets_digests", False, f"missing {asset}")
+        digest = _sha256(asset)
+        if assets.get(name) != digest:
+            assets[name] = digest
+            changed.append(name)
+    if changed:
+        connection.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    detail = "updated " + ", ".join(changed) if changed else "digests already match"
+    return _step("assets_digests", True, detail)
+
+
+def _run_setup(exe: Path, account: str, port: int) -> dict:
+    """Create connection.json through the pinned binary that owns the secret."""
+    try:
+        result = subprocess.run(
+            [str(exe), "setup", "--account", account, "--port", str(port)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return _step("setup", False, f"{type(exc).__name__}: {exc}")
+    output = (result.stdout + result.stderr).strip()[:200]
+    return _step("setup", result.returncode == 0,
+                 f"exit {result.returncode} {output}".strip())
 
 
 def release_path(host_dir: Path) -> Path:
@@ -124,10 +220,23 @@ def run(
                        f"{exe} expected sha256 {FIXED_RELEASE_SHA256}"
                        if not exe_ok else str(exe)))
 
-    connection = host / "daqmt" / "connection.json"
+    resource = host / "daqmt"
+    connection = resource / "connection.json"
+    if not connection.is_file() and apply and exe_ok:
+        steps.append(_run_setup(exe, account, port))
     steps.append(_step("connection", connection.is_file(),
                        str(connection) if connection.is_file()
                        else f"run: {exe} setup --account {account} --port {port}"))
+    if source is not None:
+        states = _asset_states(source.parent, resource, _pinned_assets(connection))
+        stale = [name for name, state in states.items() if not state["ok"]]
+        if apply and stale and connection.is_file():
+            resource.mkdir(parents=True, exist_ok=True)
+            for name in PINNED_ASSETS:
+                shutil.copyfile(source.parent / name, resource / name)
+            steps.append(_retarget_assets(connection, resource))
+            states = _asset_states(source.parent, resource, _pinned_assets(connection))
+        steps.append(_asset_step(states))
 
     probe = _probe(base_url, secret)
     if probe is not None:

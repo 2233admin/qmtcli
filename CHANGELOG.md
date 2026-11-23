@@ -7,6 +7,14 @@ begin.
 
 ## Unreleased
 
+- `qmtcli bootstrap --apply` now installs the whole bridge, not just the entry point. It deploys all
+  five files `connection.json` pins by sha256 into `resource_dir` and retargets their digests, so a
+  new host no longer needs four hand-copied assets and a manual digest edit. The `bridge_assets`
+  step fails when a deployed file differs from the repository or when its digest is not pinned,
+  which is the case that made the strategy refuse to start. When `connection.json` is absent,
+  `--apply` runs `qmtcli-rs setup` first, so a fresh host is one command plus the GUI login and
+  strategy registration that only a human can do. The secret is still owned by setup.
+
 - Fixed the codec crash on native types that expose `__name__` but not `__module__`. `_encode` read
   `type(value).__module__` unguarded, so such a metaclass raised `AttributeError` and the whole call
   failed. The new `result_encoding_failed` code named the missing attribute (`__module__`) but not the

@@ -42,21 +42,31 @@ The fixed Rust CLI binary is absent for the same reason it is absent everywhere 
 
 ## Fresh host
 
-One command reports every deployment fact with its digest, and installs the
-bridge file with `--apply`:
+Two commands, then the two GUI steps only a human can do (login, register the
+strategy and tick auto-run).
 
 ```
 uv run qmtcli bootstrap --account <资金账号> --qmt-root <QMT 安装目录>          # report only
-uv run qmtcli bootstrap --account <资金账号> --qmt-root <QMT 安装目录> --apply  # copy 大QMT.py in
+uv run qmtcli bootstrap --account <资金账号> --qmt-root <QMT 安装目录> --apply  # install everything
 ```
 
-Steps: `qmt_root` → `bridge_source` (sha256 must equal the constant above) →
-`strategy_file` (a differing file is reported, never overwritten) →
-`fixed_release` (pinned SHA-256, never downloaded) → `connection` (written by
-`qmtcli-rs setup`, which owns the secret and its DACL) → `bridge_live`
+`--apply` runs `qmtcli-rs setup` when `connection.json` is absent, copies `大QMT.py`
+into `<QMT 安装目录>/python/`, deploys all five pinned assets into `resource_dir` and
+retargets their digests in place.
+
+Steps: `qmt_root` → `bridge_source` (sha256 must equal the constant in
+`src/qmtcli/bootstrap.py`) → `strategy_file` (a differing file is reported, never
+overwritten) → `fixed_release` (pinned SHA-256, never downloaded) → `connection`
+(written by `qmtcli-rs setup`, which owns the secret and its DACL) → `bridge_assets`
+(each pinned file present, byte-identical to the repository, and its digest recorded)
+→ `assets_digests` (rewrites only that map) → `bridge_assets` again → `bridge_live`
 (`--base-url` + `--secret` probe `/api/health` and `/api/account/asset`).
-Exit 0 only when every step that applies is green; the two GUI steps it cannot
-do are printed under `manual_steps`.
+Exit 0 only when every step that applies is green; the GUI steps it cannot do are
+printed under `manual_steps`.
+
+A digest that does not match its file is reported even when the file itself is
+correct. The strategy refuses to start on a mismatch, so checking the files alone
+would report green on a config that cannot boot.
 
 ## Host requirements
 
