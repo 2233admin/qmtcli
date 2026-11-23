@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "41aed2dcbdbd7fb3864c9fef3ed06760f67c3034be82c9580ba98d522d578c04"
+BRIDGE_SHA256 = "7684183d6853f6b092e85d23bffe7c09794f7a2eb24bd9ac92114ff0fce2e979"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
@@ -224,7 +224,6 @@ def _probe(base_url: str | None, secret: str, target: tuple[str, str] | None = N
         "trading_enabled": health.get("trading_enabled"),
         "cash": asset.get("cash"),
         "bridge_sha256": health.get("bridge_sha256"),
-        "bridge_sha_error": health.get("bridge_sha_error"),
     }
 
 
@@ -338,17 +337,10 @@ def run(
         fresh = running is not None and running == BRIDGE_SHA256
         detail = str(probe)
         if probe.get("reachable") and not fresh:
-            error = probe.get("bridge_sha_error")
-            if error:
-                detail = "running build cannot identify itself: %s (on disk %s)" % (
-                    error,
-                    BRIDGE_SHA256[:12],
-                )
-            else:
-                detail = "running %s, on disk %s: restart the strategy in the client" % (
-                    running[:12] if running else "an unknown build",
-                    BRIDGE_SHA256[:12],
-                )
+            detail = "running %s, on disk %s: restart the strategy in the client" % (
+                running[:12] if running else "an unknown build",
+                BRIDGE_SHA256[:12],
+            )
         steps.append(_step("bridge_live", bool(probe.get("reachable")) and fresh, detail))
 
     return {

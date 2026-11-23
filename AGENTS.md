@@ -58,6 +58,9 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - After changing `bridge/`, run `python scripts/check_bridge_copies.py <qmt_root>`. `pytest` imports
   this checkout and stays green while the client runs old bytes, so only this check shows that the
   change reached the client.
+- `qmtcli bootstrap` calls `bridge_live` by comparing the digest the running bridge computed at
+  import with `bootstrap.BRIDGE_SHA256`. QMT execs a strategy without `__file__`, so the bridge
+  hashes `resource_dir/daqmt_server.py`, which bootstrap keeps byte-identical to the strategy file.
 - `bridge/` is excluded from `ruff format` (`[tool.ruff.format]` in `pyproject.toml`)
   because those files are sha256-pinned and deployed byte-identical elsewhere.
   `ruff check` still lints them; only the formatter steps back.

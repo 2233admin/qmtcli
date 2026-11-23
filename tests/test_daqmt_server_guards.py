@@ -7,6 +7,7 @@ as a broker rejection on a live order.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -329,8 +330,9 @@ def test_an_unverified_status_reports_null_not_a_guess(server):
     assert record["status_name"] is None
 
 
-def test_health_reports_the_digest_of_the_running_bridge(server):
+def test_health_reports_the_digest_of_the_running_bridge(server, monkeypatch):
     """A host compares this with the digest on disk to see whether a restart is due."""
+    monkeypatch.setattr(server, "BRIDGE_SHA256", "a" * 64)
 
     class _Health:
         def __init__(self):
@@ -346,15 +348,16 @@ def test_health_reports_the_digest_of_the_running_bridge(server):
     handler = _Health()
     server.HealthHandler.get(handler)
 
-    assert server.BRIDGE_SHA256 is not None
-    assert len(server.BRIDGE_SHA256) == 64
-    assert handler.payload["bridge_sha256"] == server.BRIDGE_SHA256
+    assert handler.payload["bridge_sha256"] == "a" * 64
 
 
-def test_the_bridge_identifies_itself_when_the_loader_omits_file(server):
-    """QMT execs a strategy without __file__, so the code object is the fallback."""
-    namespace = {"__name__": "daqmt_server_without_file"}
-    exec(compile(_SERVER.read_text(encoding="utf-8"), str(_SERVER), "exec"), namespace)
+def test_the_running_digest_comes_from_the_pinned_asset(server, tmp_path):
+    """QMT gives a strategy no __file__, so the pinned asset carries the build id."""
+    payload = b"print(1)\n"
+    (tmp_path / "daqmt_server.py").write_bytes(payload)
 
-    assert namespace["BRIDGE_SHA_ERROR"] is None
-    assert namespace["BRIDGE_SHA256"] == server.BRIDGE_SHA256
+    assert (
+        server._build_digest({"resource_dir": str(tmp_path)}) == hashlib.sha256(payload).hexdigest()
+    )
+    assert server._build_digest({}) is None
+    assert server._build_digest({"resource_dir": str(tmp_path / "absent")}) is None
