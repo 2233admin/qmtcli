@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 # The bridge entry point as it is shipped in this repository (bridge/README.md).
-BRIDGE_SHA256 = "c1e9931dad23d5565399104284c3060049f70334194146df87ab74818e3a321d"
+BRIDGE_SHA256 = "6ab50812e7f4f72766d7f7367710722a2ba088c1055f4ef4106cdc41a5a15434"
 STRATEGY_FILENAME = "大QMT.py"
 
 # The release artifact k-atana's gateway accepts by digest (qmtcli_transport.FIXED_SHA256).
@@ -31,8 +31,13 @@ FIXED_RELEASE_SHA256 = "7749aaece5b71f697cb0e6ebc5bf91d655d5353b94cfc7f66f5b64eb
 
 # Every file connection.json pins by sha256. The strategy refuses to start when one
 # is missing or differs, so deploying only the entry point leaves a half-installed bridge.
-PINNED_ASSETS = ("daqmt_server.py", "daqmt_api.py", "daqmt_codec.py",
-                "daqmt_stream.py", "catalog.json")
+PINNED_ASSETS = (
+    "daqmt_server.py",
+    "daqmt_api.py",
+    "daqmt_codec.py",
+    "daqmt_stream.py",
+    "catalog.json",
+)
 
 # Order-safety keys an older connection file predates. The bridge reads both at
 # strategy start and defaults an absent one to off, so this only makes the current
@@ -79,8 +84,7 @@ def _pinned_assets(connection: Path) -> dict | None:
     return assets if isinstance(assets, dict) else None
 
 
-def _asset_states(source_dir: Path, resource: Path,
-                  pinned: dict | None = None) -> dict[str, dict]:
+def _asset_states(source_dir: Path, resource: Path, pinned: dict | None = None) -> dict[str, dict]:
     """Per asset: in the repo, deployed byte-identical, and digest recorded in the config.
 
     A wrong digest matters as much as a wrong file: the strategy refuses to start on a
@@ -109,8 +113,11 @@ def _asset_states(source_dir: Path, resource: Path,
 def _asset_step(states: dict[str, dict]) -> dict:
     """Collapse the per-asset states into one reported step."""
     stale = [name for name, state in states.items() if not state["ok"]]
-    detail = "all current" if not stale else "; ".join(
-        f"{name}: {states[name]['detail']}" for name in stale)
+    detail = (
+        "all current"
+        if not stale
+        else "; ".join(f"{name}: {states[name]['detail']}" for name in stale)
+    )
     return _step("bridge_assets", not stale, detail)
 
 
@@ -150,13 +157,15 @@ def _run_setup(exe: Path, account: str, port: int) -> dict:
     try:
         result = subprocess.run(
             [str(exe), "setup", "--account", account, "--port", str(port)],
-            capture_output=True, text=True, timeout=60, check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return _step("setup", False, f"{type(exc).__name__}: {exc}")
     output = (result.stdout + result.stderr).strip()[:200]
-    return _step("setup", result.returncode == 0,
-                 f"exit {result.returncode} {output}".strip())
+    return _step("setup", result.returncode == 0, f"exit {result.returncode} {output}".strip())
 
 
 def release_path(host_dir: Path) -> Path:
@@ -208,48 +217,80 @@ def run(
     base_url: str | None = None,
     secret: str = "",
 ) -> dict:
-    host = (Path(host_dir) if host_dir
-            else Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "QmtCli")
+    host = (
+        Path(host_dir)
+        if host_dir
+        else Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "QmtCli"
+    )
     steps: list[dict] = []
     root = Path(qmt_root) if qmt_root else None
-    steps.append(_step("qmt_root", bool(root and (root / "python").is_dir()),
-                       str(root) if root else "pass --qmt-root (client install dir)"))
+    steps.append(
+        _step(
+            "qmt_root",
+            bool(root and (root / "python").is_dir()),
+            str(root) if root else "pass --qmt-root (client install dir)",
+        )
+    )
 
     source = _bridge_source(bridge_src)
     source_ok = source is not None and _sha256(source) == BRIDGE_SHA256
-    steps.append(_step("bridge_source", source_ok,
-                       f"{source} sha256={'match' if source_ok else 'missing or unexpected'}"))
+    steps.append(
+        _step(
+            "bridge_source",
+            source_ok,
+            f"{source} sha256={'match' if source_ok else 'missing or unexpected'}",
+        )
+    )
 
     if root is not None and (root / "python").is_dir():
         target = root / "python" / STRATEGY_FILENAME
         if target.is_file():
             same = _sha256(target) == BRIDGE_SHA256
-            steps.append(_step("strategy_file", same, f"{target} {'already current' if same else 'DIFFERS'}"))
+            steps.append(
+                _step("strategy_file", same, f"{target} {'already current' if same else 'DIFFERS'}")
+            )
         elif apply and source_ok:
             shutil.copyfile(source, target)
-            steps.append(_step("strategy_file", _sha256(target) == BRIDGE_SHA256, f"copied to {target}"))
+            steps.append(
+                _step("strategy_file", _sha256(target) == BRIDGE_SHA256, f"copied to {target}")
+            )
         else:
-            steps.append(_step("strategy_file", False, f"{target} absent (rerun with --apply to copy)"))
+            steps.append(
+                _step("strategy_file", False, f"{target} absent (rerun with --apply to copy)")
+            )
     elif root is None:
         steps.append(_step("strategy_file", False, "unknown: no qmt_root"))
 
     exe = release_path(host)
     exe_ok = exe.is_file() and _sha256(exe) == FIXED_RELEASE_SHA256
-    steps.append(_step("fixed_release", exe_ok,
-                       f"{exe} expected sha256 {FIXED_RELEASE_SHA256}"
-                       if not exe_ok else str(exe)))
+    steps.append(
+        _step(
+            "fixed_release",
+            exe_ok,
+            f"{exe} expected sha256 {FIXED_RELEASE_SHA256}" if not exe_ok else str(exe),
+        )
+    )
 
     resource = host / "daqmt"
     connection = resource / "connection.json"
     if not connection.is_file() and apply and exe_ok:
         steps.append(_run_setup(exe, account, port))
-    steps.append(_step("connection", connection.is_file(),
-                       str(connection) if connection.is_file()
-                       else f"run: {exe} setup --account {account} --port {port}"))
+    steps.append(
+        _step(
+            "connection",
+            connection.is_file(),
+            str(connection)
+            if connection.is_file()
+            else f"run: {exe} setup --account {account} --port {port}",
+        )
+    )
     if connection.is_file() and apply:
         added = _ensure_trading_config(connection)
-        steps.append(_step("trading_config", True,
-                           ", ".join(added) or "dry_run and max_order_amount present"))
+        steps.append(
+            _step(
+                "trading_config", True, ", ".join(added) or "dry_run and max_order_amount present"
+            )
+        )
     if source is not None:
         states = _asset_states(source.parent, resource, _pinned_assets(connection))
         stale = [name for name, state in states.items() if not state["ok"]]
