@@ -107,14 +107,19 @@ fn read_body(reader: &mut impl Read, expected_seq: u32) -> Result<Option<Vec<u8>
 fn decode_reply(body: &[u8]) -> Result<Document> {
     let decoded = inflate(body, MAX_PAYLOAD)?;
     let mut cursor = Cursor::new(&decoded);
-    let reply = Document::from_reader(&mut cursor)?;
+    let mut reply = Document::from_reader(&mut cursor)?;
     if cursor.position() != decoded.len() as u64 {
         return Err("trailing BSON data in quote reply".into());
     }
     if !matches!(reply.get("status"), Some(Bson::Int32(0) | Bson::Int64(0))) {
         return Err("native quote service rejected request".into());
     }
-    Ok(reply.get_document("params")?.clone())
+    // Move the params subtree out instead of cloning it: a tick snapshot holds one
+    // subdocument per code, so the deep copy costs as much as the parse itself.
+    match reply.remove("params") {
+        Some(Bson::Document(params)) => Ok(params),
+        _ => Err("quote reply carries no params document".into()),
+    }
 }
 
 fn inflate(body: &[u8], limit: usize) -> Result<Vec<u8>> {
