@@ -920,12 +920,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="show SDK/module/path diagnostics")
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="report every host deployment step with its digest; --apply installs the bridge file",
+        help="report every host deployment step; --apply installs the whole bridge",
         description=(
             "Brings a fresh host from a broker QMT install to a verified bridge. "
-            "Reports only by default; --apply copies bridge/daqmt_server.py to "
-            "<qmt-root>/python/大QMT.py. Never downloads QMT or the fixed release, "
-            "and never writes the bridge secret (qmtcli-rs setup owns that)."
+            "Reports only by default. --apply copies bridge/daqmt_server.py to "
+            "<qmt-root>/python/大QMT.py, deploys the five assets connection.json pins "
+            "into its resource_dir, retargets their sha256 digests, and runs qmtcli-rs "
+            "setup when connection.json is missing. Never downloads QMT or the fixed "
+            "release, and never writes the bridge secret (qmtcli-rs setup owns that)."
         ),
     )
     bootstrap.add_argument("--account", required=True, help="资金账号")
@@ -935,7 +937,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
     )
     bootstrap.add_argument(
-        "--bridge-src", default="", help="bridge/daqmt_server.py to install from"
+        "--bridge-src", default="",
+        help="bridge/daqmt_server.py to install from; its directory supplies every asset",
     )
     bootstrap.add_argument("--apply", action="store_true", help="perform the copy steps")
     bootstrap.add_argument(
