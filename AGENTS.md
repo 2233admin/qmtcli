@@ -61,6 +61,8 @@ Use `uv run ...` unless the package is installed into the active global Python.
 - `qmtcli bootstrap` calls `bridge_live` by comparing the digest the running bridge computed at
   import with `bootstrap.BRIDGE_SHA256`. QMT execs a strategy without `__file__`, so the bridge
   hashes `resource_dir/daqmt_server.py`, which bootstrap keeps byte-identical to the strategy file.
+- `qmtcli doctor --accept` is the read-only acceptance: health digest, asset, orders and four
+  dry-run probes. It never calls `passorder`; a stale strategy process fails the `bridge` row.
 - `bridge/` is excluded from `ruff format` (`[tool.ruff.format]` in `pyproject.toml`)
   because those files are sha256-pinned and deployed byte-identical elsewhere.
   `ruff check` still lints them; only the formatter steps back.

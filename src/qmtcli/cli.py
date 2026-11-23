@@ -917,7 +917,23 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("schema", help="print agent-readable RPC/server schema")
     subparsers.add_parser("examples", help="print built-in agent request examples")
     subparsers.add_parser("status", help="check whether xtquant is importable")
-    subparsers.add_parser("doctor", help="show SDK/module/path diagnostics")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="show SDK/module/path diagnostics; --accept probes the strategy bridge",
+        description=(
+            "Reports xtquant diagnostics by default. --accept runs the read-only "
+            "acceptance probes against the strategy bridge: health and build digest, "
+            "asset, orders, and three dry-run orders that the local guard must refuse. "
+            "It never calls passorder."
+        ),
+    )
+    doctor.add_argument("--accept", action="store_true", help="run the read-only acceptance probes")
+    doctor.add_argument(
+        "--symbol", default="600519.SH", help="A-share symbol for the dry-run probes"
+    )
+    doctor.add_argument(
+        "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
+    )
     bootstrap = subparsers.add_parser(
         "bootstrap",
         help="report every host deployment step; --apply installs the whole bridge",
@@ -1718,8 +1734,14 @@ def _run_command(args: argparse.Namespace) -> int:
         _print_json({"xtquant": available, "state": "sdk_ready" if available else "sdk_missing"})
         return 0
     if args.command == "doctor":
-        _print_json(QMTGateway.sdk_diagnostics(args.path, args.account))
-        return 0
+        if not args.accept:
+            _print_json(QMTGateway.sdk_diagnostics(args.path, args.account))
+            return 0
+        from qmtcli import daqmt_market
+
+        result = daqmt_market.acceptance(symbol=args.symbol, host_dir=args.host_dir or None)
+        _print_json(result)
+        return 0 if result["ok"] else 1
     if args.command == "bootstrap":
         from qmtcli import bootstrap
 

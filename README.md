@@ -324,8 +324,12 @@ qmtcli --path D:\DFZQxtqmt_client_real_win64\userdata_mini --account ACCOUNT_ID 
 ```powershell
 qmtcli status
 qmtcli doctor
+qmtcli doctor --accept
 python -m qmtcli status
 ```
+
+`--accept` 对策略桥接跑只读验收：健康与摘要、资产、委托，以及四笔 dry-run。价格带、手数、
+金额上限必须被本地守卫拒掉，合法单必须通过 dry-run。它永远不调用 `passorder`，任一项失败退出码 1。
 
 行情：
 

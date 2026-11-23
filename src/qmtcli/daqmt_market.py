@@ -307,3 +307,96 @@ def cancel_order(
         host_dir=host_dir,
         timeout=timeout,
     )
+
+
+def acceptance(
+    *, symbol: str = "600519.SH", host_dir: str | None = None, timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """Run the read-only acceptance probes and return one row per check.
+
+    Every order probe is a dry run, so the bridge validates and returns without
+    calling passorder. The rejection probes send a price of 0.01, which keeps the
+    amount under the cap and leaves the check under test as the one that fires.
+    """
+    from qmtcli.bootstrap import BRIDGE_SHA256
+
+    rows: list[dict[str, Any]] = []
+
+    def add(name: str, ok: bool, detail: str) -> None:
+        rows.append({"name": name, "ok": bool(ok), "detail": detail})
+
+    def reject(name: str, *, volume: int, expect: str) -> None:
+        try:
+            place_order(
+                side="buy",
+                stock=symbol,
+                volume=volume,
+                price=0.01,
+                dry_run=True,
+                host_dir=host_dir,
+                timeout=timeout,
+            )
+        except BridgeError as exc:
+            add(name, expect in str(exc), str(exc))
+        else:
+            add(name, False, "the bridge accepted a probe it should have refused")
+
+    try:
+        health = get("/api/health", host_dir=host_dir, timeout=timeout) or {}
+        asset = account_asset(host_dir=host_dir, timeout=timeout) or {}
+        book = orders(host_dir=host_dir, timeout=timeout) or {}
+        info = instrument_detail(symbol, host_dir=host_dir, timeout=timeout) or {}
+    except BridgeError as exc:
+        add("bridge", False, str(exc))
+        return {"ok": False, "accept": rows}
+
+    running = health.get("bridge_sha256")
+    add(
+        "bridge",
+        health.get("bridge_running") is True and running == BRIDGE_SHA256,
+        "running %s, on disk %s" % ((running or "unknown")[:12], BRIDGE_SHA256[:12]),
+    )
+    add(
+        "asset",
+        isinstance(asset.get("cash"), (int, float)),
+        "cash %s, total_asset %s" % (asset.get("cash"), asset.get("total_asset")),
+    )
+    book_rows = book.get("orders")
+    add(
+        "orders",
+        isinstance(book_rows, list) and all("status" in row for row in book_rows),
+        "%d orders" % len(book_rows or []),
+    )
+
+    reject("price_band", volume=100, expect="limit")
+    reject("lot_size", volume=150, expect="multiple of 100")
+    cap = float(_load_connection(host_dir).get("max_order_amount") or 0)
+    if cap > 0:
+        reject("amount_cap", volume=int(cap / 0.01) + 100, expect="exceeds max_order_amount")
+    else:
+        add("amount_cap", True, "no max_order_amount configured")
+
+    upper = float(info.get("UpStopPrice") or 0)
+    lower = float(info.get("DownStopPrice") or 0)
+    tick = float(info.get("PriceTick") or 0.01)
+    price = round((upper + lower) / 2 / tick) * tick
+    try:
+        result = place_order(
+            side="buy",
+            stock=symbol,
+            volume=100,
+            price=price,
+            dry_run=True,
+            host_dir=host_dir,
+            timeout=timeout,
+        )
+    except BridgeError as exc:
+        add("dry_run", False, str(exc))
+    else:
+        add(
+            "dry_run",
+            result.get("status") == "dry_run" and result.get("broker_accepted") is None,
+            "status %s at %.2f" % (result.get("status"), price),
+        )
+
+    return {"ok": all(row["ok"] for row in rows), "accept": rows}

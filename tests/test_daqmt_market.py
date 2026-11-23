@@ -256,3 +256,64 @@ def test_place_order_sends_dry_run_only_when_asked(tmp_path, captured):
 
     assert "dry_run" not in json.loads(captured[0].data)
     assert json.loads(captured[1].data)["dry_run"] is True
+
+
+def test_acceptance_passes_against_a_healthy_bridge(tmp_path, monkeypatch):
+    host = _write_connection(tmp_path, max_order_amount=500000)
+    monkeypatch.setattr("qmtcli.bootstrap.BRIDGE_SHA256", "a" * 64)
+    monkeypatch.setattr(
+        daqmt_market, "get", lambda *a, **k: {"bridge_running": True, "bridge_sha256": "a" * 64}
+    )
+    monkeypatch.setattr(
+        daqmt_market, "account_asset", lambda **k: {"cash": 1.0, "total_asset": 2.0}
+    )
+    monkeypatch.setattr(daqmt_market, "orders", lambda **k: {"orders": [{"status": 56}]})
+    monkeypatch.setattr(
+        daqmt_market,
+        "instrument_detail",
+        lambda *a, **k: {"UpStopPrice": 10.0, "DownStopPrice": 9.0, "PriceTick": 0.01},
+    )
+
+    def place(**kwargs):
+        if kwargs["price"] != 0.01:
+            return {"status": "dry_run", "broker_accepted": None}
+        if kwargs["volume"] == 150:
+            raise daqmt_market.BridgeError(
+                "A-share order volume must be a positive multiple of 100"
+            )
+        if kwargs["volume"] > 100:
+            raise daqmt_market.BridgeError(
+                "order amount 600000.00 exceeds max_order_amount 500000.00"
+            )
+        raise daqmt_market.BridgeError("price 0.01 is below the lower limit 9.00")
+
+    monkeypatch.setattr(daqmt_market, "place_order", place)
+
+    result = daqmt_market.acceptance(host_dir=str(host))
+
+    assert result["ok"] is True
+    assert [row["name"] for row in result["accept"]] == [
+        "bridge",
+        "asset",
+        "orders",
+        "price_band",
+        "lot_size",
+        "amount_cap",
+        "dry_run",
+    ]
+
+
+def test_acceptance_reports_an_unreachable_bridge(tmp_path, monkeypatch):
+    host = _write_connection(tmp_path)
+
+    def refuse(*args, **kwargs):
+        raise daqmt_market.BridgeError("bridge unreachable at http://127.0.0.1:9001")
+
+    monkeypatch.setattr(daqmt_market, "get", refuse)
+
+    result = daqmt_market.acceptance(host_dir=str(host))
+
+    assert result["ok"] is False
+    assert result["accept"] == [
+        {"name": "bridge", "ok": False, "detail": "bridge unreachable at http://127.0.0.1:9001"}
+    ]
