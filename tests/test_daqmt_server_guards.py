@@ -8,6 +8,7 @@ as a broker rejection on a live order.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -111,3 +112,104 @@ def test_a_missing_contract_detail_degrades_to_the_cap_check(server):
 
 def test_the_cap_is_off_when_it_is_zero(server):
     _guard(server, price=396.24, volume=100000, cap=0)
+
+
+class _OrderRoute:
+    """A buy handler with its JSON body, so the route can be driven without tornado."""
+
+    DIRECTION_CODE = 23
+
+    def __init__(self, body, *, dry_run=False):
+        self.request = type("Request", (), {"body": json.dumps(body).encode()})()
+        self.application = type("App", (), {"dry_run": dry_run})()
+        self.replies = []
+
+    def _ctx(self):
+        return _Context(DETAIL)
+
+    def _account(self):
+        return "603010000249"
+
+    def write_json(self, payload, status=None):
+        self.replies.append((status, payload))
+
+
+def _route(server, body, **kwargs):
+    route = _OrderRoute(body, **kwargs)
+    server._SDK_CONFIG = {"max_order_amount": 0}
+    server._PlaceOrderMixin._do_order(route)
+    return route
+
+
+def test_the_buy_route_refuses_a_price_type_other_than_a_limit(server, monkeypatch):
+    monkeypatch.setattr(
+        server, "passorder", lambda *args: pytest.fail("passorder reached"), raising=False
+    )
+
+    route = _route(server, {"stock": "300308.SZ", "price": 0.0, "volume": 100, "prType": 5})
+
+    assert route.replies == [
+        (
+            400,
+            {
+                "status": "error",
+                "message": "dedicated endpoints accept only prType=11 (limit orders)",
+            },
+        )
+    ]
+
+
+def test_the_buy_route_rejects_an_unpriced_band_before_passorder(server, monkeypatch):
+    monkeypatch.setattr(
+        server, "passorder", lambda *args: pytest.fail("passorder reached"), raising=False
+    )
+
+    route = _route(server, {"stock": "300308.SZ", "price": 900.0, "volume": 100})
+
+    assert route.replies[0][0] == 400
+    assert "above the upper limit" in route.replies[0][1]["message"]
+
+
+def test_a_dry_run_answers_without_reaching_passorder(server, monkeypatch):
+    monkeypatch.setattr(
+        server, "passorder", lambda *args: pytest.fail("passorder reached"), raising=False
+    )
+
+    route = _route(server, {"stock": "300308.SZ", "price": 396.24, "volume": 100}, dry_run=True)
+
+    assert route.replies[0][1]["status"] == "dry_run"
+
+
+def test_a_resubmitted_key_answers_duplicate_without_passorder(server, monkeypatch):
+    monkeypatch.setattr(server, "passorder", lambda *args: 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+    body = {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "abc123"}
+
+    assert _route(server, body).replies[0][1]["status"] == "submitted"
+    second = _route(server, body)
+
+    assert second.replies == [
+        (
+            200,
+            {
+                "status": "duplicate",
+                "user_order_id": "abc123",
+                "message": "order already submitted with this user_order_id",
+            },
+        )
+    ]
+
+
+def test_a_reused_key_with_other_terms_answers_conflict(server, monkeypatch):
+    monkeypatch.setattr(server, "passorder", lambda *args: 0, raising=False)
+    server._ORDER_RESERVATIONS.clear()
+
+    _route(
+        server, {"stock": "300308.SZ", "price": 396.24, "volume": 100, "user_order_id": "abc123"}
+    )
+    changed = _route(
+        server, {"stock": "300308.SZ", "price": 396.24, "volume": 200, "user_order_id": "abc123"}
+    )
+
+    assert changed.replies[0][0] == 409
+    assert changed.replies[0][1]["status"] == "conflict"

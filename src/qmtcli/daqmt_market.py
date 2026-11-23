@@ -271,10 +271,10 @@ def place_order(
     A 202 ``submitted`` means ``passorder`` returned, not that the broker
     accepted the order. Read ``orders()`` for the outcome.
 
-    ``user_order_id`` makes a retry idempotent: the bridge copies the value into
-    the order's ``m_strRemark`` and uses it as the reservation key. If an order
-    with the same key already exists, the bridge returns it instead of submitting
-    a second one.
+    ``user_order_id`` makes a retry safe within one bridge process: the bridge
+    copies it into the order's ``m_strRemark`` and answers 409 when the key is
+    reused with different terms. After a strategy restart the reservation is
+    gone, so reconcile with ``orders()`` before reusing a key.
     """
     if side not in ("buy", "sell"):
         raise ValueError("side must be buy or sell")

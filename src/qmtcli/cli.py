@@ -937,7 +937,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--host-dir", default="", help="QmtCli host dir (default: %%LOCALAPPDATA%%/QmtCli)"
     )
     bootstrap.add_argument(
-        "--bridge-src", default="",
+        "--bridge-src",
+        default="",
         help="bridge/daqmt_server.py to install from; its directory supplies every asset",
     )
     bootstrap.add_argument("--apply", action="store_true", help="perform the copy steps")
@@ -1449,7 +1450,7 @@ def build_parser() -> argparse.ArgumentParser:
     buy.add_argument(
         "--user-order-id",
         default="",
-        help="idempotency key; a retry with the same value returns the existing order",
+        help="idempotency key; the bridge answers 409 when the key comes back with other terms",
     )
     buy.add_argument(
         "--dry-run",
@@ -1473,7 +1474,7 @@ def build_parser() -> argparse.ArgumentParser:
     sell.add_argument(
         "--user-order-id",
         default="",
-        help="idempotency key; a retry with the same value returns the existing order",
+        help="idempotency key; the bridge answers 409 when the key comes back with other terms",
     )
     sell.add_argument(
         "--dry-run",
@@ -1658,8 +1659,8 @@ def _handle_order_command(args: argparse.Namespace) -> int:
                 stock=args.symbol,
                 volume=args.volume,
                 price=args.price,
-                user_order_id=getattr(args, "user_order_id", "") or None,
-                dry_run=getattr(args, "dry_run", False),
+                user_order_id=args.user_order_id or None,
+                dry_run=args.dry_run,
                 **options,
             )
     except daqmt_market.BridgeError as exc:
@@ -2379,6 +2380,8 @@ def _handle_rpc_data(
             stock=request["symbol"],
             volume=request["volume"],
             price=request["price"],
+            user_order_id=request.get("user_order_id") or None,
+            dry_run=request.get("dry_run", False),
         )
     if command == "cancel":
         from qmtcli import daqmt_market

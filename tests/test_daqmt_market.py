@@ -228,9 +228,7 @@ def test_cancel_order_targets_one_sys_id(tmp_path, captured):
 
 
 def test_place_order_sends_user_order_id_to_server(tmp_path, captured):
-    """Client sends user_order_id to server; server handles idempotency."""
     host = _write_connection(tmp_path)
-
     daqmt_market.place_order(
         side="buy",
         stock="300308.SZ",
